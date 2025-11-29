@@ -1,7 +1,10 @@
 package pilot
 
 import (
+	"strings"
 	"sync"
+
+	"github.com/pkg/errors"
 )
 
 type Route struct {
@@ -25,3 +28,17 @@ func NewRouter() *Router {
 		mu:         sync.RWMutex{},
 	}
 }
+
+func (r *Router) insert(serviceInfo *ServiceInfo) error {
+	if serviceInfo == nil || len(strings.TrimSpace(serviceInfo.Name)) == 0 {
+		return errors.New("invalid service info")
+	}
+
+	return nil
+}
+
+func (r *Router) delete(serviceInfo *ServiceInfo) error {
+	return nil
+}
+
+func (r *Router) Close() {}
