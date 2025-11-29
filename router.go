@@ -14,10 +14,11 @@ type Route struct {
 }
 
 type Router struct {
-	routeTree  *RouteTree[*Route]
-	routeIndex map[string]map[string]struct{}
-	pathIndex  map[string]struct{}
-	mu         sync.RWMutex
+	routeTree      *RouteTree[*Route]
+	routeIndex     map[string]map[string]struct{}
+	pathIndex      map[string]struct{}
+	globalHandlers []HandlerFunc
+	mu             sync.RWMutex
 }
 
 func NewRouter() *Router {
@@ -27,6 +28,18 @@ func NewRouter() *Router {
 		pathIndex:  map[string]struct{}{},
 		mu:         sync.RWMutex{},
 	}
+}
+
+func (r *Router) Close() {}
+
+func (r *Router) Use(mw ...HandlerFunc) {
+	if len(mw) == 0 {
+		return
+	}
+
+	r.mu.Lock()
+	r.globalHandlers = append(r.globalHandlers, mw...)
+	r.mu.Unlock()
 }
 
 func (r *Router) insert(serviceInfo *ServiceInfo) error {
@@ -40,5 +53,3 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 func (r *Router) delete(serviceInfo *ServiceInfo) error {
 	return nil
 }
-
-func (r *Router) Close() {}
