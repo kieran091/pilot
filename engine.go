@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 type EngineOption func(*Engine)
@@ -22,6 +25,8 @@ func WithWatcher(w Watcher) EngineOption {
 		e.watcher = w
 	}
 }
+
+var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 
 type Engine struct {
 	cfg    Config

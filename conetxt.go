@@ -7,43 +7,41 @@ import (
 	"time"
 )
 
-type HandlerFunc func(ctx *Context)
-
 type Context struct {
 	Request *http.Request
-	Writer  http.ResponseWriter
+	Writer  *responseWriter
 
 	handlers []HandlerFunc
 	index    int8
 	aborted  bool
 
-	Keys map[string]any
+	keys map[string]any
 	mu   sync.RWMutex
 
 	ctx context.Context
 
-	Service    string
-	MethodName string
-	Path       string
-	Params     map[string]string
+	service    string
+	methodName string
+	path       string
+	params     map[string]string
 
-	Errors []error
+	errors []error
 
-	StartTime time.Time
+	startTime time.Time
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 	return &Context{
 		Request:   r,
-		Writer:    w,
+		Writer:    withResponseWriter(w),
 		handlers:  make([]HandlerFunc, 0),
 		index:     -1,
-		Keys:      make(map[string]any),
+		keys:      make(map[string]any),
 		ctx:       r.Context(),
-		Path:      r.URL.Path,
-		Params:    make(map[string]string),
-		Errors:    make([]error, 0),
-		StartTime: time.Now(),
+		path:      r.URL.Path,
+		params:    make(map[string]string),
+		errors:    make([]error, 0),
+		startTime: time.Now(),
 	}
 }
 
@@ -66,44 +64,44 @@ func (c *Context) IsAborted() bool {
 func (c *Context) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Keys[key] = value
+	c.keys[key] = value
 }
 
 func (c *Context) Get(key string) (any, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	val, exists := c.Keys[key]
+	val, exists := c.keys[key]
 	return val, exists
 }
 
 func (c *Context) GetService() string {
-	return c.Service
+	return c.service
 }
 
 func (c *Context) SetService(service string) {
-	c.Service = service
+	c.service = service
 }
 
 func (c *Context) GetMethodName() string {
-	return c.MethodName
+	return c.methodName
 }
 
 func (c *Context) SetMethodName(methodName string) {
-	c.MethodName = methodName
+	c.methodName = methodName
 }
 
 func (c *Context) SetParams(key, value string) {
-	c.Params[key] = value
+	c.params[key] = value
 }
 
 func (c *Context) Param(key string) string {
-	return c.Params[key]
+	return c.params[key]
 }
 
 func (c *Context) AddError(err error) {
-	c.Errors = append(c.Errors, err)
+	c.errors = append(c.errors, err)
 }
 
 func (c *Context) Duration() time.Duration {
-	return time.Since(c.StartTime)
+	return time.Since(c.startTime)
 }

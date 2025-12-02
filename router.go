@@ -19,8 +19,9 @@ func (mt routeTrees) getTree(method string) (*RouteTree[*Route], bool) {
 type Route struct {
 	service    string
 	methodName string
-	handlers   []HandlerFunc
-	invoke     InvokerFunc
+	bodyField  string
+	//handlers   []HandlerFunc
+	invoke InvokerFunc
 }
 
 type Router struct {
