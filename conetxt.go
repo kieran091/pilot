@@ -22,10 +22,10 @@ type Context struct {
 
 	ctx context.Context
 
-	Service string
-	Method  string
-	Path    string
-	Params  map[string]string
+	Service    string
+	MethodName string
+	Path       string
+	Params     map[string]string
 
 	Errors []error
 
@@ -40,7 +40,6 @@ func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 		index:     -1,
 		Keys:      make(map[string]any),
 		ctx:       r.Context(),
-		Method:    r.Method,
 		Path:      r.URL.Path,
 		Params:    make(map[string]string),
 		Errors:    make([]error, 0),
@@ -81,8 +80,16 @@ func (c *Context) GetService() string {
 	return c.Service
 }
 
-func (c *Context) SetService(Service string) {
-	c.Service = Service
+func (c *Context) SetService(service string) {
+	c.Service = service
+}
+
+func (c *Context) GetMethodName() string {
+	return c.MethodName
+}
+
+func (c *Context) SetMethodName(methodName string) {
+	c.MethodName = methodName
 }
 
 func (c *Context) SetParams(key, value string) {

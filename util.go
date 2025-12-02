@@ -1,8 +1,10 @@
 package pilot
 
 import (
+	"fmt"
 	"net"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
@@ -42,6 +44,14 @@ func splitPath(path string) []string {
 	}
 
 	return segs
+}
+
+func normalizePath(p string) string {
+	clean := strings.TrimSpace(p)
+
+	clean = strings.TrimPrefix(clean, "/")
+	clean = path.Clean("/" + clean)
+	return fmt.Sprintf("%s", clean)
 }
 
 func fileDescriptorSet2FileDescriptor(fds *descriptor.FileDescriptorSet) ([]*desc.FileDescriptor, error) {

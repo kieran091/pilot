@@ -19,11 +19,11 @@ type ServiceInstance struct {
 }
 
 type ServiceMetadata struct {
-	Name       string                      `json:"name"`
-	Addr       string                      `json:"addr"`
-	Rules      []HTTPRule                  `json:"rules"`
-	ProtoDSL   string                      `json:"proto_dsl"`
-	Descriptor *descriptor.DescriptorProto `json:"-"`
+	Name              string                        `json:"name"`
+	Addr              string                        `json:"addr"`
+	Rules             []HTTPRule                    `json:"rules"`
+	ProtoDSL          string                        `json:"proto_dsl"`
+	FileDescriptorSet *descriptor.FileDescriptorSet `json:"-"`
 }
 
 type ServiceInfo struct {
@@ -32,8 +32,8 @@ type ServiceInfo struct {
 }
 
 type ServiceEvent struct {
-	Type    EventType
-	Service *ServiceInfo
+	Type        EventType
+	ServiceInfo *ServiceInfo
 }
 
 type EventType int

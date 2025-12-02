@@ -109,7 +109,7 @@ func (e *Engine) Stop() error {
 }
 
 func (e *Engine) Use(mw ...HandlerFunc) {
-	e.router.Use(mw...)
+	e.router.use(mw...)
 }
 
 func (e *Engine) handleWatchEvents() {
@@ -121,11 +121,11 @@ func (e *Engine) handleWatchEvents() {
 		case event := <-eventChan:
 			switch event.Type {
 			case EventAdd, EventUpdate:
-				if err := e.router.insert(event.Service); err != nil {
+				if err := e.router.insert(event.ServiceInfo); err != nil {
 					// TODO : log error
 				}
 			case EventDelete:
-				if err := e.router.delete(event.Service); err != nil {
+				if err := e.router.delete(event.ServiceInfo); err != nil {
 					// TODO : log error
 				}
 			}

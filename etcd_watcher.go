@@ -203,8 +203,8 @@ func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
 			}
 			ew.servicesMap[serviceName] = serviceInfo
 			ew.eventChan <- &ServiceEvent{
-				Type:    EventAdd,
-				Service: serviceInfo,
+				Type:        EventAdd,
+				ServiceInfo: serviceInfo,
 			}
 		} else {
 			found := false
@@ -222,8 +222,8 @@ func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
 
 			serviceInfo.ServiceMetadata = metadata
 			ew.eventChan <- &ServiceEvent{
-				Type:    EventUpdate,
-				Service: serviceInfo,
+				Type:        EventUpdate,
+				ServiceInfo: serviceInfo,
 			}
 		}
 	case clientv3.EventTypeDelete:
@@ -249,14 +249,14 @@ func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
 		if len(newInstances) == 0 {
 			delete(ew.servicesMap, serviceName)
 			ew.eventChan <- &ServiceEvent{
-				Type:    EventDelete,
-				Service: serviceInfo,
+				Type:        EventDelete,
+				ServiceInfo: serviceInfo,
 			}
 		} else {
 			serviceInfo.Instances = newInstances
 			ew.eventChan <- &ServiceEvent{
-				Type:    EventUpdate,
-				Service: serviceInfo,
+				Type:        EventUpdate,
+				ServiceInfo: serviceInfo,
 			}
 		}
 	}
