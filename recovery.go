@@ -39,7 +39,6 @@ func Recovery() HandlerFunc {
 			}
 		}()
 
-		// 调用下一个处理程序
 		c.Next()
 	}
 }

@@ -17,7 +17,7 @@ type EtcdConfig struct {
 }
 
 type DiscoveryConfig struct {
-	Mode string
+	Mode Mode
 	Etcd *EtcdConfig
 }
 

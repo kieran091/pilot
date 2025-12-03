@@ -2,11 +2,12 @@ package pilot
 
 import (
 	"context"
-	"errors"
+	"net"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -88,7 +89,10 @@ func (e *Engine) Start() error {
 	}
 
 	go e.handleWatchEvents()
-	go e.listenAndServe()
+
+	if err := e.listenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
 
 	return nil
 }
@@ -138,8 +142,13 @@ func (e *Engine) handleWatchEvents() {
 	}
 }
 
-func (e *Engine) listenAndServe() {
-	if err := e.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		// TODO : log error
+func (e *Engine) listenAndServe() error {
+	listener, err := net.Listen("tcp", e.server.Addr)
+	if err != nil {
+		return err
 	}
+
+	defaultLogger.Info().Str("addr", e.server.Addr).Msg("HTTP server start successful")
+
+	return e.server.Serve(listener)
 }
