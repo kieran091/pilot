@@ -14,7 +14,7 @@ type HTTPRule struct {
 	Body   string
 }
 
-func ExtractHTTPRules(method *desc.MethodDescriptor) ([]*HTTPRule, error) {
+func extractHTTPRule(method *desc.MethodDescriptor) ([]HTTPRule, error) {
 	opts := method.GetMethodOptions()
 	if opts == nil {
 		return nil, nil
@@ -30,14 +30,14 @@ func ExtractHTTPRules(method *desc.MethodDescriptor) ([]*HTTPRule, error) {
 		return nil, nil
 	}
 
-	rules := make([]*HTTPRule, 0)
+	rules := make([]HTTPRule, 0)
 
 	mainRule, err := parseHTTPRule(httpRule)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse HTTP rule: %w", err)
 	}
 	if mainRule != nil {
-		rules = append(rules, mainRule)
+		rules = append(rules, *mainRule)
 	}
 
 	for _, additionalRule := range httpRule.AdditionalBindings {
@@ -46,7 +46,7 @@ func ExtractHTTPRules(method *desc.MethodDescriptor) ([]*HTTPRule, error) {
 			return nil, fmt.Errorf("failed to parse additional binding: %w", err)
 		}
 		if rule != nil {
-			rules = append(rules, rule)
+			rules = append(rules, *rule)
 		}
 	}
 

@@ -1,6 +1,8 @@
 package pilot
 
 import (
+	"fmt"
+	"path"
 	"strings"
 	"sync"
 
@@ -177,4 +179,12 @@ func (r *Router) isClosed() bool {
 	defer r.mu.RUnlock()
 
 	return r.closed
+}
+
+func normalizePath(p string) string {
+	clean := strings.TrimSpace(p)
+
+	clean = strings.TrimPrefix(clean, "/")
+	clean = path.Clean("/" + clean)
+	return fmt.Sprintf("%s", clean)
 }

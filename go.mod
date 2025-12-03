@@ -3,6 +3,7 @@ module github.com/kieran091/pilot
 go 1.25.4
 
 require (
+	github.com/bufbuild/protocompile v0.14.1
 	github.com/bytedance/sonic v1.14.2
 	github.com/fullstorydev/grpcurl v1.9.3
 	github.com/golang/protobuf v1.5.4
@@ -19,7 +20,6 @@ require (
 )
 
 require (
-	github.com/bufbuild/protocompile v0.14.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
