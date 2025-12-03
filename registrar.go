@@ -48,7 +48,7 @@ type ServiceRegistrar struct {
 	compiler   *protocompile.Compiler
 }
 
-func NewRegister(serviceName, listenOn string, registry Registry) *ServiceRegistrar {
+func NewServiceRegistrar(serviceName, listenOn string, registry Registry) *ServiceRegistrar {
 	return &ServiceRegistrar{
 		serviceName: serviceName,
 		addr:        figureOutListenOn(listenOn),
@@ -163,6 +163,10 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 		fds.File = append(fds.File, protodesc.ToFileDescriptorProto(fd))
 	}
 
+	for _, linkedFile := range linkedFiles {
+		addFile(linkedFile)
+	}
+
 	return fds, nil
 }
 
@@ -177,15 +181,16 @@ func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]
 	// Extract HTTP rules from services and methods
 	var rules []HTTPRule
 	for _, fileDescriptor := range fileDescriptors {
-		services := fileDescriptor.GetServices()
-		for _, service := range services {
-			methods := service.GetMethods()
-			for _, method := range methods {
+		services := fileDescriptor.Services()
+		for i := 0; i < services.Len(); i++ {
+			service := services.Get(i)
+			methods := service.Methods()
+			for j := 0; j < methods.Len(); j++ {
+				method := methods.Get(j)
 				httpRule, err := extractHTTPRule(method)
 				if err != nil {
-					continue
+					return nil, err
 				}
-
 				rules = append(rules, httpRule...)
 			}
 		}
@@ -204,6 +209,22 @@ func openProto(path string) (protocompile.SearchResult, error) {
 	return protocompile.SearchResult{
 		Source: bytes.NewReader(data),
 	}, nil
+}
+
+// fileDescriptorSet2FileDescriptor converts a FileDescriptorSet to a slice of FileDescriptors
+func fileDescriptorSet2FileDescriptor(fds *descriptorpb.FileDescriptorSet) ([]protoreflect.FileDescriptor, error) {
+	files, err := protodesc.NewFiles(fds)
+	if err != nil {
+		return nil, errors.WithMessage(err, "create file descriptors from set failed")
+	}
+
+	fileDescriptors := make([]protoreflect.FileDescriptor, 0, files.NumFiles())
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		fileDescriptors = append(fileDescriptors, fd)
+		return true
+	})
+
+	return fileDescriptors, nil
 }
 
 // figureOutListenOn determines the appropriate listen address

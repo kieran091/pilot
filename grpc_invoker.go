@@ -55,20 +55,20 @@ func NewGRPCInvoker(addr string, fileDescriptorSet *descriptorpb.FileDescriptorS
 		return nil, errors.WithMessage(err, "failed to create gRPC client connection")
 	}
 
-	fileDescriptors, err := fileDescriptorSet2FileDescriptor(fileDescriptorSet)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed to create file descriptor from file descriptor set")
-	}
-
-	descriptorSource, err := grpcurl.DescriptorSourceFromFileDescriptors(fileDescriptors...)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed to create descriptor source from file descriptors")
-	}
+	//fileDescriptors, err := fileDescriptorSet2FileDescriptor(fileDescriptorSet)
+	//if err != nil {
+	//	return nil, errors.WithMessage(err, "failed to create file descriptor from file descriptor set")
+	//}
+	//
+	//descriptorSource, err := grpcurl.DescriptorSourceFromFileDescriptors(fileDescriptors...)
+	//if err != nil {
+	//	return nil, errors.WithMessage(err, "failed to create descriptor source from file descriptors")
+	//}
 
 	return &GRPCInvoker{
-		conn:             conn,
-		addr:             addr,
-		DescriptorSource: descriptorSource,
+		conn: conn,
+		addr: addr,
+		//DescriptorSource: descriptorSource,
 	}, nil
 }
 

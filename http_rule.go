@@ -3,9 +3,10 @@ package pilot
 import (
 	"fmt"
 
-	"github.com/jhump/protoreflect/desc"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 type HTTPRule struct {
@@ -14,19 +15,29 @@ type HTTPRule struct {
 	Body   string
 }
 
-func extractHTTPRule(method *desc.MethodDescriptor) ([]HTTPRule, error) {
-	opts := method.GetMethodOptions()
+func extractHTTPRule(method protoreflect.MethodDescriptor) ([]HTTPRule, error) {
+	opts := method.Options()
 	if opts == nil {
 		return nil, nil
 	}
 
-	if !proto.HasExtension(opts, annotations.E_Http) {
+	optsData, err := proto.Marshal(opts)
+	if err != nil {
 		return nil, nil
 	}
 
-	ext := proto.GetExtension(opts, annotations.E_Http)
+	methodOptions := &descriptorpb.MethodOptions{}
+	if err := proto.Unmarshal(optsData, methodOptions); err != nil {
+		return nil, nil
+	}
+
+	if !proto.HasExtension(methodOptions, annotations.E_Http) {
+		return nil, nil
+	}
+
+	ext := proto.GetExtension(methodOptions, annotations.E_Http)
 	httpRule, ok := ext.(*annotations.HttpRule)
-	if !ok || httpRule == nil {
+	if !ok {
 		return nil, nil
 	}
 
