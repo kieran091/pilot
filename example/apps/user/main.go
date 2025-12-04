@@ -20,7 +20,8 @@ type UserServer struct {
 	user.UnimplementedUserServer
 }
 
-func (s *UserServer) GetUser(ctx context.Context, req *user.GetUserReq) (*user.GetUserResp, error) {
+func (s *UserServer) GetUser(_ context.Context, req *user.GetUserReq) (*user.GetUserResp, error) {
+	fmt.Println("GetUser called with ID:", req.Id)
 	return &user.GetUserResp{
 		Id:   req.Id,
 		Name: fmt.Sprintf("User-%s", req.Id),
@@ -45,7 +46,7 @@ func main() {
 
 	serviceRegistrar := pilot.NewServiceRegistrar(
 		"User",
-		":9000",
+		":9001",
 		etcdRegistry,
 	)
 	err = serviceRegistrar.Register(
@@ -59,7 +60,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	listen, err := net.Listen("tcp", ":9000")
+	listen, err := net.Listen("tcp", ":9001")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -70,9 +71,14 @@ func main() {
 
 	reflection.Register(s)
 
-	log.Println("gRPC server is starting on port 9000...")
+	log.Println("gRPC server is starting on port 9001...")
 
-	go s.Serve(listen)
+	go func() {
+		if err := s.Serve(listen); err != nil {
+			cancel()
+			log.Fatalln("failed to serve:", err)
+		}
+	}()
 
 	<-sigChan
 	cancel()

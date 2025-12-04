@@ -11,6 +11,7 @@ import (
 
 type InvokerFunc func(ctx *Context, key string, input []byte) ([]byte, error)
 
+// routeTrees maps HTTP methods to their corresponding route trees
 type routeTrees map[string]*RouteTree[*Route]
 
 func (mt routeTrees) getTree(method string) (*RouteTree[*Route], bool) {
@@ -18,22 +19,53 @@ func (mt routeTrees) getTree(method string) (*RouteTree[*Route], bool) {
 	return methodTree, exists
 }
 
+// Route represents an HTTP-to-gRPC routing configuration
 type Route struct {
-	service    string
+	// service is the name of the gRPC service.
+	// e.g. "user.User"
+	service string
+
+	// methodName is the name of the gRPC method.
+	// e.g. "get_user"
 	methodName string
-	bodyField  string
-	//handlers   []HandlerFunc
+
+	// bodyField is the field in the HTTP request body to be mapped to the gRPC request message.
+	//
+	//	rpc get_user(GetUserRequest) returns (UserResponse) {
+	//		option (google.api.http) = {
+	//			post: "/v1/user/register"
+	//			body: "*"
+	//		}
+	//	}
+	// In this example, bodyField is "*", indicating that the entire HTTP request body should be mapped to the gRPC request message.
+	//
+	//	rpc get_user(GetUserRequest) returns (UserResponse) {
+	//		option (google.api.http) = {
+	//			post: "/v1/user/register"
+	//			body: "user"
+	//		}
+	//	}
+	// In this example, the bodyField is set to "user", indicating that the entire HTTP request body should be mapped to the "user" field in the gRPC request message.
+	bodyField string
+
+	// invoke is the function to invoke the gRPC method.
+	// The multi-instance system employs consistent hashing for load balancing
 	invoke InvokerFunc
 }
 
+// Router manages HTTP-to-gRPC routing with service discovery and load balancing
 type Router struct {
 	trees routeTrees
 
+	// routeIndex maps service name to route path to HTTP method for quick lookup
 	routeIndex map[string]map[string]string // service name -> route path -> method name
-	pathIndex  map[string]struct{}
+	// pathIndex stores all registered paths for duplicate detection
+	pathIndex map[string]struct{}
 
+	// globalHandlers contains middleware functions applied to all requests
 	globalHandlers []HandlerFunc
 
+	// serviceRegistry maintains all available service endpoints
 	serviceRegistry ServiceRegistry
 	mu              sync.RWMutex
 	closed          bool
@@ -49,6 +81,7 @@ func NewRouter() *Router {
 	}
 }
 
+// Close gracefully shuts down the router and all its service endpoints
 func (r *Router) Close() {
 	r.mu.Lock()
 	if r.closed {
@@ -77,6 +110,9 @@ func (r *Router) Close() {
 }
 
 // insert inserts service info into the router.
+// There are two scenarios
+// 1.When the service is new, create a new service endpoint and add routes.
+// 2.When the service already exists, only add the new instance without adding routes.
 func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	if r.isClosed() {
 		return errors.New("router is closed")
@@ -105,8 +141,8 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	needToInsertRoute := len(r.routeIndex[serviceInfo.Name]) == 0
 	r.mu.Unlock()
 
-	// update service instances
-	endpoint.UpdateInstance(serviceInfo.Instance)
+	// add service instances
+	endpoint.addInstance(serviceInfo.Instance)
 
 	if needToInsertRoute {
 		for _, rule := range serviceInfo.Rules {
@@ -153,12 +189,30 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	return nil
 }
 
+// delete removes service info from the router.
+// There are two scenarios
+// 1.When there are more than one instance in the list, only delete the instance without deleting the route.
+// 2.When there is only one instance, delete both the instance and the corresponding route.
 func (r *Router) delete(serviceInfo *ServiceInfo) error {
 	if r.isClosed() {
 		return errors.New("router is closed")
 	}
 	if serviceInfo == nil || len(strings.TrimSpace(serviceInfo.Name)) == 0 {
 		return errors.New("invalid service info")
+	}
+
+	endpoint := r.serviceRegistry[serviceInfo.Name]
+	if endpoint == nil {
+		return errors.New("service not found")
+	}
+
+	if endpoint.len() > 1 {
+		defaultLogger.Info().
+			Str("service", serviceInfo.Name).
+			Str("instance_id", serviceInfo.Instance.Id).
+			Msg("remove instance from service endpoint")
+		endpoint.removeInstance(serviceInfo.Instance)
+		return nil
 	}
 
 	r.mu.Lock()
@@ -190,7 +244,6 @@ func (r *Router) delete(serviceInfo *ServiceInfo) error {
 			Msg("route deleted")
 	}
 
-	endpoint := r.serviceRegistry[serviceInfo.Name]
 	endpoint.Close()
 
 	delete(r.routeIndex, serviceInfo.Name)
@@ -220,6 +273,12 @@ func (r *Router) isClosed() bool {
 	return r.closed
 }
 
+// normalizePath cleans and normalizes the given path.
+// It ensures the path starts with a single "/" and removes any redundant slashes or whitespace.
+// For example:
+//
+//	Input: " /api/v1/users/ "
+//	Output: "/api/v1/users"
 func normalizePath(p string) string {
 	clean := strings.TrimSpace(p)
 

@@ -12,16 +12,20 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
+// uint32Slice implements sort.Interface for []uint32
 type uint32Slice []uint32
 
 func (s uint32Slice) Len() int           { return len(s) }
 func (s uint32Slice) Less(i, j int) bool { return s[i] < s[j] }
 func (s uint32Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-// ConsistentHash implements a consistent hashing mechanism.
+// ConsistentHash implements a consistent hashing mechanism for load balancing.
 type ConsistentHash struct {
+	// replicas specifies the number of virtual nodes per physical node
 	replicas int
+	// keys stores the sorted hash values of all virtual nodes
 	keys     uint32Slice
+	// hashMap maps hash values to their corresponding node identifiers
 	hashMap  map[uint32]string
 	mu       sync.RWMutex
 }
@@ -33,10 +37,12 @@ func NewConsistentHash(replicas int) *ConsistentHash {
 	}
 }
 
+// hashKey computes the hash of a given key using CRC32.
 func (c *ConsistentHash) hashKey(key string) uint32 {
 	return crc32.ChecksumIEEE([]byte(key))
 }
 
+// add adds a new node to the consistent hash ring.
 func (c *ConsistentHash) add(hashNode string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -51,6 +57,7 @@ func (c *ConsistentHash) add(hashNode string) {
 	sort.Sort(c.keys)
 }
 
+// remove removes a node from the consistent hash ring.
 func (c *ConsistentHash) remove(hashNode string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -92,15 +99,22 @@ func (c *ConsistentHash) get(key string) (string, error) {
 	return hashNode, nil
 }
 
+// ServiceRegistry maps service names to their corresponding endpoints
 type ServiceRegistry map[string]*ServiceEndpoint
 
+// ServiceEndpoint manages multiple instances of a service with load balancing
 type ServiceEndpoint struct {
+	// invokers maps instance identifiers to their gRPC invokers
 	invokers  map[string]*GRPCInvoker
+	// instances holds all available service instances
 	instances []*ServiceInstance
 
+	// replicas specifies the number of virtual nodes for consistent hashing
 	replicas int
+	// hashRing provides consistent hashing for load balancing across instances
 	hashRing *ConsistentHash
 
+	// fds contains the protobuf file descriptor set for the service
 	fds *descriptorpb.FileDescriptorSet
 
 	mu sync.RWMutex
@@ -128,8 +142,8 @@ func newServiceEndpoint(replicas int, pb string) (*ServiceEndpoint, error) {
 	}, nil
 }
 
-// UpdateInstance updates the service instances and rebuilds the consistent hash ring.
-func (se *ServiceEndpoint) UpdateInstance(instance *ServiceInstance) {
+// addInstance updates the service instances and rebuilds the consistent hash ring.
+func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 	if instance == nil {
 		return
 	}
@@ -197,6 +211,41 @@ func (se *ServiceEndpoint) UpdateInstance(instance *ServiceInstance) {
 		}
 		se.invokers[newHashNode] = invoker
 	}
+}
+
+// removeInstance removes a service instance and updates the consistent hash ring.
+func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
+	if instance == nil {
+		return
+	}
+
+	se.mu.Lock()
+	defer se.mu.Unlock()
+
+	index := -1
+	for i, inst := range se.instances {
+		if inst.Id == instance.Id {
+			index = i
+			break
+		}
+	}
+
+	if index != -1 {
+		se.instances = append(se.instances[:index], se.instances[index+1:]...)
+		hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		se.hashRing.remove(hashNode)
+
+		if invoker, exists := se.invokers[hashNode]; exists {
+			_ = invoker.Close()
+			delete(se.invokers, hashNode)
+		}
+	}
+}
+
+func (se *ServiceEndpoint) len() int {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+	return len(se.instances)
 }
 
 // GetInvoker returns an InvokerFunc that uses consistent hashing to select the appropriate service instance.
