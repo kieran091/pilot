@@ -91,10 +91,10 @@ func (sr *ServiceRegistrar) Register(ctx context.Context, opts ...RegisterOption
 	}
 
 	serviceMetadata := ServiceMetadata{
-		Name:     sr.serviceName,
-		Addr:     sr.addr,
-		Rules:    rules,
-		ProtoDSL: base64.StdEncoding.EncodeToString(protoDsl),
+		Name:  sr.serviceName,
+		Addr:  sr.addr,
+		Rules: rules,
+		Pb:    base64.StdEncoding.EncodeToString(protoDsl),
 	}
 
 	return sr.registry.Register(ctx, sr.serviceName, sr.instanceId, &serviceMetadata)

@@ -1,12 +1,14 @@
 package pilot
 
 import (
+	"encoding/base64"
 	"fmt"
 	"hash/crc32"
 	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
@@ -99,59 +101,101 @@ type ServiceEndpoint struct {
 	replicas int
 	hashRing *ConsistentHash
 
+	fds *descriptorpb.FileDescriptorSet
+
 	mu sync.RWMutex
 }
 
-// UpdateInstances updates the service instances and rebuilds the consistent hash ring.
-func (se *ServiceEndpoint) UpdateInstances(instances []*ServiceInstance, fileDescriptorSet *descriptorpb.FileDescriptorSet) {
+func newServiceEndpoint(replicas int, pb string) (*ServiceEndpoint, error) {
+	pbDecode, err := base64.StdEncoding.DecodeString(pb)
+	if err != nil {
+		defaultLogger.Error().Err(err).Msg("failed to decode base64 proto descriptors")
+		return nil, err
+	}
+
+	var fds descriptorpb.FileDescriptorSet
+	if err = proto.Unmarshal(pbDecode, &fds); err != nil {
+		defaultLogger.Error().Err(err).Msg("failed to unmarshal proto descriptors")
+		return nil, err
+	}
+
+	return &ServiceEndpoint{
+		invokers:  make(map[string]*GRPCInvoker),
+		instances: make([]*ServiceInstance, 0),
+		replicas:  replicas,
+		hashRing:  NewConsistentHash(replicas),
+		fds:       &fds,
+	}, nil
+}
+
+// UpdateInstance updates the service instances and rebuilds the consistent hash ring.
+func (se *ServiceEndpoint) UpdateInstance(instance *ServiceInstance) {
+	if instance == nil {
+		return
+	}
+
 	se.mu.Lock()
 	defer se.mu.Unlock()
 
-	oldInstances := se.instances
-
-	se.instances = make([]*ServiceInstance, len(instances))
-	copy(se.instances, instances)
-
-	ring := NewConsistentHash(se.replicas)
-	for _, inst := range instances {
-		hashNode := fmt.Sprintf("%s:%s", inst.Id, inst.Addr)
-		ring.add(hashNode)
+	if se.instances == nil {
+		se.instances = make([]*ServiceInstance, 0)
 	}
-	se.hashRing = ring
-
+	if se.hashRing == nil {
+		se.hashRing = NewConsistentHash(se.replicas)
+	}
 	if se.invokers == nil {
 		se.invokers = make(map[string]*GRPCInvoker)
 	}
 
-	// Build index for old and new instances
-	// to identify added and removed instances
-	oldInstanceIndex, newInstanceIndex := make(map[string]*ServiceInstance), make(map[string]*ServiceInstance)
-	for _, instance := range oldInstances {
-		oldInstanceIndex[instance.Id] = instance
-	}
-	for _, instance := range instances {
-		newInstanceIndex[instance.Id] = instance
-	}
-
-	for id, instance := range newInstanceIndex {
-		if _, exists := oldInstanceIndex[id]; !exists {
-			hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
-			invoker, err := NewGRPCInvoker(instance.Addr, fileDescriptorSet)
-			if err != nil {
-				continue
-			}
-			se.invokers[hashNode] = invoker
+	instanceExists := false
+	var existingInstance *ServiceInstance
+	for _, inst := range se.instances {
+		if inst.Id == instance.Id {
+			instanceExists = true
+			existingInstance = inst
+			break
 		}
 	}
 
-	for id, instance := range oldInstanceIndex {
-		if _, exists := newInstanceIndex[id]; !exists {
-			hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
-			if invoker, exists := se.invokers[hashNode]; exists {
-				_ = invoker.Close()
-				delete(se.invokers, id)
+	addressChanged := instanceExists && existingInstance.Addr != instance.Addr
+
+	if !instanceExists {
+		se.instances = append(se.instances, instance)
+		hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		se.hashRing.add(hashNode)
+
+		invoker, err := NewGRPCInvoker(instance.Addr, se.fds)
+		if err != nil {
+			return
+		}
+		se.invokers[hashNode] = invoker
+	} else if addressChanged {
+		for i, inst := range se.instances {
+			if inst.Id == instance.Id {
+				se.instances[i] = instance
+				break
 			}
 		}
+
+		ring := NewConsistentHash(se.replicas)
+		for _, inst := range se.instances {
+			hashNode := fmt.Sprintf("%s:%s", inst.Id, inst.Addr)
+			ring.add(hashNode)
+		}
+		se.hashRing = ring
+
+		oldHashNode := fmt.Sprintf("%s:%s", existingInstance.Id, existingInstance.Addr)
+		if invoker, exists := se.invokers[oldHashNode]; exists {
+			_ = invoker.Close()
+			delete(se.invokers, oldHashNode)
+		}
+
+		newHashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		invoker, err := NewGRPCInvoker(instance.Addr, se.fds)
+		if err != nil {
+			return
+		}
+		se.invokers[newHashNode] = invoker
 	}
 }
 

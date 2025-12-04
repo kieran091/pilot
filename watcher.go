@@ -8,12 +8,6 @@ type Watcher interface {
 	Stop() error
 
 	Watch() <-chan *ServiceEvent
-
-	GetServices() ([]string, error)
-
-	GetService(serviceName string) (*ServiceInfo, error)
-
-	GetInstances(serviceName string) ([]*ServiceInstance, error)
 }
 
 type WatcherBuilder interface {

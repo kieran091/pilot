@@ -129,13 +129,19 @@ func (e *Engine) handleWatchEvents() {
 			return
 		case event := <-eventChan:
 			switch event.Type {
-			case EventAdd, EventUpdate:
+			case EventAdd:
 				if err := e.router.insert(event.ServiceInfo); err != nil {
-					// TODO : log error
+					defaultLogger.Error().
+						Str("service", event.ServiceInfo.Name).
+						Err(err).
+						Msg("failed to insert service into router")
 				}
 			case EventDelete:
 				if err := e.router.delete(event.ServiceInfo); err != nil {
-					// TODO : log error
+					defaultLogger.Error().
+						Str("service", event.ServiceInfo.Name).
+						Err(err).
+						Msg("failed to delete service from router")
 				}
 			}
 		}

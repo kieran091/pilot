@@ -86,19 +86,27 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 		return errors.New("invalid service info")
 	}
 
+	var endpoint *ServiceEndpoint
+	var err error
+	var exists bool
+
 	r.mu.Lock()
-	endpoint, exists := r.serviceRegistry[serviceInfo.Name]
+	endpoint, exists = r.serviceRegistry[serviceInfo.Name]
 	if !exists {
-		endpoint = &ServiceEndpoint{
-			replicas: 150,
+		endpoint, err = newServiceEndpoint(150, serviceInfo.Pb)
+		if err != nil {
+			r.mu.Unlock()
+			return errors.WithMessage(err, "failed to create service endpoint")
 		}
+
 		r.serviceRegistry[serviceInfo.Name] = endpoint
 	}
+
 	needToInsertRoute := len(r.routeIndex[serviceInfo.Name]) == 0
 	r.mu.Unlock()
 
 	// update service instances
-	endpoint.UpdateInstances(serviceInfo.Instances, serviceInfo.FileDescriptorSet)
+	endpoint.UpdateInstance(serviceInfo.Instance)
 
 	if needToInsertRoute {
 		for _, rule := range serviceInfo.Rules {
@@ -119,7 +127,11 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 				invoke:     endpoint.GetInvoker(rule.RPCRule.Service, rule.RPCRule.Method),
 			})
 			if err != nil {
-				// TODO log error
+				defaultLogger.Error().
+					Str("service", serviceInfo.Name).
+					Str("http_method", methodUpper).
+					Str("http_path", routePath).
+					Msg("failed to add route")
 				continue
 			}
 
@@ -130,6 +142,12 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 			r.routeIndex[serviceInfo.Name][routePath] = methodUpper
 			r.pathIndex[routePath] = struct{}{}
 			r.mu.Unlock()
+
+			defaultLogger.Info().
+				Str("service", serviceInfo.Name).
+				Str("http_method", methodUpper).
+				Str("http_path", routePath).
+				Msg("route added")
 		}
 	}
 	return nil
@@ -148,14 +166,28 @@ func (r *Router) delete(serviceInfo *ServiceInfo) error {
 	for routePath, method := range routeIndex {
 		routeTree, exists := r.trees.getTree(method)
 		if !exists {
-			// TODO log error
+			defaultLogger.Warn().
+				Str("service", serviceInfo.Name).
+				Str("http_method", method).
+				Str("http_path", routePath).
+				Msg("route tree not found")
 			continue
 		}
 		ok := routeTree.Delete(routePath)
 		if !ok {
-			// TODO log error
+			defaultLogger.Warn().
+				Str("service", serviceInfo.Name).
+				Str("http_method", method).
+				Str("http_path", routePath).
+				Msg("failed to delete route")
 			continue
 		}
+
+		defaultLogger.Info().
+			Str("service", serviceInfo.Name).
+			Str("http_method", method).
+			Str("http_path", routePath).
+			Msg("route deleted")
 	}
 
 	endpoint := r.serviceRegistry[serviceInfo.Name]
@@ -164,6 +196,8 @@ func (r *Router) delete(serviceInfo *ServiceInfo) error {
 	delete(r.routeIndex, serviceInfo.Name)
 	delete(r.serviceRegistry, serviceInfo.Name)
 	r.mu.Unlock()
+
+	defaultLogger.Info().Str("service", serviceInfo.Name).Msg("service deleted")
 
 	return nil
 }

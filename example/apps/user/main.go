@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/kieran091/pilot"
@@ -25,6 +28,9 @@ func (s *UserServer) GetUser(ctx context.Context, req *user.GetUserReq) (*user.G
 }
 
 func main() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -66,7 +72,12 @@ func main() {
 
 	log.Println("gRPC server is starting on port 9000...")
 
-	if err := s.Serve(listen); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
-	}
+	go s.Serve(listen)
+
+	<-sigChan
+	cancel()
+	log.Println("shutting down gRPC server...")
+	s.GracefulStop()
+	_ = serviceRegistrar.Deregister(context.Background())
+	log.Println("gRPC server stopped.")
 }

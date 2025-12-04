@@ -11,16 +11,16 @@ func formatDuration(d time.Duration) string {
 	us := d.Microseconds()
 
 	if us < 1000 {
-		return strconv.FormatInt(us, 10) + " us"
+		return strconv.FormatInt(us, 10) + "us"
 	}
 
 	ms := us / 1000
 	if ms < 1000 {
-		return strconv.FormatInt(ms, 10) + " ms"
+		return strconv.FormatInt(ms, 10) + "ms"
 	}
 
 	s := float64(us) / 1000000.0
-	return strconv.FormatFloat(s, 'f', 2, 64) + " s"
+	return strconv.FormatFloat(s, 'f', 2, 64) + "s"
 }
 
 func buildLogEvent(c *Context, isError bool) *zerolog.Event {

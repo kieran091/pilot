@@ -18,7 +18,7 @@ message GetUserResp {
 service User {
   rpc get_user(GetUserReq) returns (GetUserResp) {
     option (google.api.http) = {
-      get: "/v1/users/:id"
+      get: "/v1/user/:id"
     };
   }
 }

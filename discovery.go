@@ -1,9 +1,5 @@
 package pilot
 
-import (
-	"github.com/golang/protobuf/protoc-gen-go/descriptor"
-)
-
 type Mode string
 
 const (
@@ -16,16 +12,15 @@ type ServiceInstance struct {
 }
 
 type ServiceMetadata struct {
-	Name              string                        `json:"name"`
-	Addr              string                        `json:"addr"`
-	Rules             []Rule                        `json:"rules"`
-	ProtoDSL          string                        `json:"proto_dsl"`
-	FileDescriptorSet *descriptor.FileDescriptorSet `json:"-"`
+	Name  string `json:"name"`
+	Addr  string `json:"addr"`
+	Rules []Rule `json:"rules"`
+	Pb    string `json:"pb"`
 }
 
 type ServiceInfo struct {
 	*ServiceMetadata
-	Instances []*ServiceInstance
+	Instance *ServiceInstance
 }
 
 type ServiceEvent struct {
@@ -38,5 +33,4 @@ type EventType int
 const (
 	EventAdd EventType = iota
 	EventDelete
-	EventUpdate
 )

@@ -2,7 +2,6 @@ package pilot
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +19,7 @@ type EtcdWatcher struct {
 
 	discoveryPath string
 
-	servicesMap map[string]*ServiceInfo
-	mu          sync.RWMutex
+	mu sync.RWMutex
 }
 
 func NewEtcdWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath string) (*EtcdWatcher, error) {
@@ -45,18 +43,16 @@ func NewEtcdWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath
 		ctx:           ctx,
 		cancel:        cancel,
 		discoveryPath: discoveryPath,
-		servicesMap:   make(map[string]*ServiceInfo),
 	}
 
 	return w, nil
 }
 
-func (ew *EtcdWatcher) Start(ctx context.Context) error {
+func (ew *EtcdWatcher) Start(_ context.Context) error {
 	if err := ew.loadExistingServices(); err != nil {
 		return errors.WithMessage(err, "failed to load existing services")
 	}
 
-	// 监听服务变更
 	go ew.watchServices()
 
 	return nil
@@ -69,39 +65,6 @@ func (ew *EtcdWatcher) Stop() error {
 
 func (ew *EtcdWatcher) Watch() <-chan *ServiceEvent {
 	return ew.eventChan
-}
-
-func (ew *EtcdWatcher) GetServices() ([]string, error) {
-	ew.mu.Lock()
-	defer ew.mu.Unlock()
-
-	services := make([]string, 0, len(ew.servicesMap))
-	for serviceName := range ew.servicesMap {
-		services = append(services, serviceName)
-	}
-
-	return services, nil
-}
-
-func (ew *EtcdWatcher) GetService(serviceName string) (*ServiceInfo, error) {
-	ew.mu.RLock()
-	defer ew.mu.RUnlock()
-
-	service, exists := ew.servicesMap[serviceName]
-	if !exists {
-		return nil, fmt.Errorf("service %s not found", serviceName)
-	}
-
-	return service, nil
-}
-
-func (ew *EtcdWatcher) GetInstances(serviceName string) ([]*ServiceInstance, error) {
-	service, err := ew.GetService(serviceName)
-	if err != nil {
-		return nil, err
-	}
-
-	return service.Instances, nil
 }
 
 func (ew *EtcdWatcher) loadExistingServices() error {
@@ -142,11 +105,16 @@ func (ew *EtcdWatcher) loadExistingServices() error {
 	defer ew.mu.Unlock()
 
 	for serviceName, instances := range servicesMap {
-		metadata := metadataMap[serviceName]
-		if metadata == nil {
-			ew.servicesMap[serviceName] = &ServiceInfo{
-				ServiceMetadata: metadata,
-				Instances:       instances,
+		serviceMetadata := metadataMap[serviceName]
+		if serviceMetadata != nil {
+			for _, instance := range instances {
+				ew.eventChan <- &ServiceEvent{
+					Type: EventAdd,
+					ServiceInfo: &ServiceInfo{
+						ServiceMetadata: serviceMetadata,
+						Instance:        instance,
+					},
+				}
 			}
 		}
 	}
@@ -165,7 +133,6 @@ func (ew *EtcdWatcher) watchServices() {
 			if watchResp.Err() != nil {
 				continue
 			}
-
 			for _, event := range watchResp.Events {
 				ew.handleServiceEvent(event)
 			}
@@ -185,79 +152,34 @@ func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
 
 	switch event.Type {
 	case clientv3.EventTypePut:
-		metadata, err := ew.parseServiceMetadata(event.Kv.Value)
+		serviceMetadata, err := ew.parseServiceMetadata(event.Kv.Value)
 		if err != nil {
+			defaultLogger.Warn().
+				Str("key", string(event.Kv.Value)).
+				Err(err).
+				Msg("failed to parse service metadata")
 			return
 		}
 
-		instance := &ServiceInstance{
-			Id:   instanceId,
-			Addr: metadata.Addr,
-		}
-
-		serviceInfo, exists := ew.servicesMap[serviceName]
-		if !exists {
-			serviceInfo = &ServiceInfo{
-				ServiceMetadata: metadata,
-				Instances:       []*ServiceInstance{instance},
-			}
-			ew.servicesMap[serviceName] = serviceInfo
-			ew.eventChan <- &ServiceEvent{
-				Type:        EventAdd,
-				ServiceInfo: serviceInfo,
-			}
-		} else {
-			found := false
-			for i, inst := range serviceInfo.Instances {
-				if inst.Id == instance.Id {
-					serviceInfo.Instances[i] = instance
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				serviceInfo.Instances = append(serviceInfo.Instances, instance)
-			}
-
-			serviceInfo.ServiceMetadata = metadata
-			ew.eventChan <- &ServiceEvent{
-				Type:        EventUpdate,
-				ServiceInfo: serviceInfo,
-			}
+		ew.eventChan <- &ServiceEvent{
+			Type: EventAdd,
+			ServiceInfo: &ServiceInfo{
+				ServiceMetadata: serviceMetadata,
+				Instance: &ServiceInstance{
+					Id:   instanceId,
+					Addr: serviceMetadata.Addr,
+				},
+			},
 		}
 	case clientv3.EventTypeDelete:
-		serviceInfo, exists := ew.servicesMap[serviceName]
-		if !exists {
-			return
-		}
-
-		found := false
-		newInstances := make([]*ServiceInstance, 0, len(serviceInfo.Instances))
-		for _, inst := range serviceInfo.Instances {
-			if inst.Id == instanceId {
-				found = true
-				continue
-			}
-			newInstances = append(newInstances, inst)
-		}
-
-		if !found {
-			return
-		}
-
-		if len(newInstances) == 0 {
-			delete(ew.servicesMap, serviceName)
-			ew.eventChan <- &ServiceEvent{
-				Type:        EventDelete,
-				ServiceInfo: serviceInfo,
-			}
-		} else {
-			serviceInfo.Instances = newInstances
-			ew.eventChan <- &ServiceEvent{
-				Type:        EventUpdate,
-				ServiceInfo: serviceInfo,
-			}
+		ew.eventChan <- &ServiceEvent{
+			Type: EventDelete,
+			ServiceInfo: &ServiceInfo{
+				ServiceMetadata: &ServiceMetadata{Name: serviceName},
+				Instance: &ServiceInstance{
+					Id: instanceId,
+				},
+			},
 		}
 	}
 }
@@ -267,8 +189,9 @@ func (ew *EtcdWatcher) parseServicePath(key string) (serviceName string, instanc
 		return
 	}
 
-	// 移除前缀并拆分为多段
-	keyParts := strings.Split(strings.TrimPrefix(key, ew.discoveryPath), "/")
+	key = strings.TrimPrefix(key, ew.discoveryPath)
+	key = strings.TrimPrefix(key, "/")
+	keyParts := strings.Split(key, "/")
 	if len(keyParts) < 2 {
 		return
 	}
