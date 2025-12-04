@@ -129,7 +129,7 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	r.mu.Lock()
 	endpoint, exists = r.serviceRegistry[serviceInfo.Name]
 	if !exists {
-		endpoint, err = newServiceEndpoint(150, serviceInfo.Pb)
+		endpoint, err = newServiceEndpoint(150, serviceInfo.Name, serviceInfo.Pb)
 		if err != nil {
 			r.mu.Unlock()
 			return errors.WithMessage(err, "failed to create service endpoint")
@@ -207,10 +207,6 @@ func (r *Router) delete(serviceInfo *ServiceInfo) error {
 	}
 
 	if endpoint.len() > 1 {
-		defaultLogger.Info().
-			Str("service", serviceInfo.Name).
-			Str("instance_id", serviceInfo.Instance.Id).
-			Msg("remove instance from service endpoint")
 		endpoint.removeInstance(serviceInfo.Instance)
 		return nil
 	}

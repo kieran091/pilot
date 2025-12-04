@@ -24,10 +24,10 @@ type ConsistentHash struct {
 	// replicas specifies the number of virtual nodes per physical node
 	replicas int
 	// keys stores the sorted hash values of all virtual nodes
-	keys     uint32Slice
+	keys uint32Slice
 	// hashMap maps hash values to their corresponding node identifiers
-	hashMap  map[uint32]string
-	mu       sync.RWMutex
+	hashMap map[uint32]string
+	mu      sync.RWMutex
 }
 
 func NewConsistentHash(replicas int) *ConsistentHash {
@@ -94,7 +94,10 @@ func (c *ConsistentHash) get(key string) (string, error) {
 		idx = 0
 	}
 
-	hashNode := c.hashMap[c.keys[idx]]
+	hashNode, exists := c.hashMap[c.keys[idx]]
+	if !exists {
+		return "", errors.Errorf("hash map entry not found for key %d", c.keys[idx])
+	}
 
 	return hashNode, nil
 }
@@ -104,13 +107,19 @@ type ServiceRegistry map[string]*ServiceEndpoint
 
 // ServiceEndpoint manages multiple instances of a service with load balancing
 type ServiceEndpoint struct {
+
+	// service is the name of the gRPC service
+	service string
+
 	// invokers maps instance identifiers to their gRPC invokers
-	invokers  map[string]*GRPCInvoker
+	invokers map[string]*GRPCInvoker
+
 	// instances holds all available service instances
 	instances []*ServiceInstance
 
 	// replicas specifies the number of virtual nodes for consistent hashing
 	replicas int
+
 	// hashRing provides consistent hashing for load balancing across instances
 	hashRing *ConsistentHash
 
@@ -120,7 +129,7 @@ type ServiceEndpoint struct {
 	mu sync.RWMutex
 }
 
-func newServiceEndpoint(replicas int, pb string) (*ServiceEndpoint, error) {
+func newServiceEndpoint(replicas int, service, pb string) (*ServiceEndpoint, error) {
 	pbDecode, err := base64.StdEncoding.DecodeString(pb)
 	if err != nil {
 		defaultLogger.Error().Err(err).Msg("failed to decode base64 proto descriptors")
@@ -134,6 +143,7 @@ func newServiceEndpoint(replicas int, pb string) (*ServiceEndpoint, error) {
 	}
 
 	return &ServiceEndpoint{
+		service:   service,
 		invokers:  make(map[string]*GRPCInvoker),
 		instances: make([]*ServiceInstance, 0),
 		replicas:  replicas,
@@ -175,7 +185,7 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 
 	if !instanceExists {
 		se.instances = append(se.instances, instance)
-		hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		hashNode := fmt.Sprintf("%s:%s", se.service, instance.Id)
 		se.hashRing.add(hashNode)
 
 		invoker, err := NewGRPCInvoker(instance.Addr, se.fds)
@@ -193,12 +203,12 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 
 		ring := NewConsistentHash(se.replicas)
 		for _, inst := range se.instances {
-			hashNode := fmt.Sprintf("%s:%s", inst.Id, inst.Addr)
+			hashNode := fmt.Sprintf("%s:%s", se.service, inst.Id)
 			ring.add(hashNode)
 		}
 		se.hashRing = ring
 
-		oldHashNode := fmt.Sprintf("%s:%s", existingInstance.Id, existingInstance.Addr)
+		oldHashNode := fmt.Sprintf("%s:%s", se.service, existingInstance.Id)
 		if invoker, exists := se.invokers[oldHashNode]; exists {
 			_ = invoker.Close()
 			delete(se.invokers, oldHashNode)
@@ -232,13 +242,22 @@ func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
 
 	if index != -1 {
 		se.instances = append(se.instances[:index], se.instances[index+1:]...)
-		hashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		hashNode := fmt.Sprintf("%s:%s", se.service, instance.Id)
+
 		se.hashRing.remove(hashNode)
 
 		if invoker, exists := se.invokers[hashNode]; exists {
 			_ = invoker.Close()
 			delete(se.invokers, hashNode)
+
+			defaultLogger.Info().
+				Str("instance_id", instance.Id).
+				Msg("instance removed successfully")
 		}
+	} else {
+		defaultLogger.Warn().
+			Str("instance_id", instance.Id).
+			Msg("instance not found for removal")
 	}
 }
 
@@ -256,6 +275,10 @@ func (se *ServiceEndpoint) GetInvoker(service, method string) InvokerFunc {
 
 		if se.hashRing == nil {
 			return nil, errors.New("hash ring not initialized")
+		}
+
+		if len(se.instances) == 0 {
+			return nil, errors.New("no available instances")
 		}
 
 		hashNode, err := se.hashRing.get(key)
