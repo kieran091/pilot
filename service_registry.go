@@ -156,8 +156,8 @@ func (se *ServiceEndpoint) UpdateInstances(instances []*ServiceInstance, fileDes
 }
 
 // GetInvoker returns an InvokerFunc that uses consistent hashing to select the appropriate service instance.
-func (se *ServiceEndpoint) GetInvoker(serviceName, methodName string) InvokerFunc {
-	return func(ctx *Context, key string, input []byte) ([]byte, error) {
+func (se *ServiceEndpoint) GetInvoker(service, method string) InvokerFunc {
+	return func(c *Context, key string, input []byte) ([]byte, error) {
 		se.mu.RLock()
 		defer se.mu.RUnlock()
 
@@ -175,8 +175,7 @@ func (se *ServiceEndpoint) GetInvoker(serviceName, methodName string) InvokerFun
 			return nil, errors.Errorf("invoker not found for instance %s", hashNode)
 		}
 
-		fullMethodName := fmt.Sprintf("/%s/%s", serviceName, methodName)
-		return invoker.Invoke(ctx.ctx, fullMethodName, input)
+		return invoker.Invoke(c.ctx, service, method, input)
 	}
 }
 

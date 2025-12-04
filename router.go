@@ -102,17 +102,22 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 
 	if needToInsertRoute {
 		for _, rule := range serviceInfo.Rules {
-			routePath := normalizePath(rule.Path)
+			routePath := normalizePath(rule.HTTPRule.Path)
 
 			r.mu.Lock()
-			methodUpper := strings.ToUpper(rule.Method)
+			methodUpper := strings.ToUpper(rule.HTTPRule.Method)
 			routeTree, exists := r.trees.getTree(methodUpper)
 			if !exists {
 				routeTree = NewRouteTree[*Route]()
 				r.trees[methodUpper] = routeTree
 			}
 
-			err := routeTree.Insert(routePath, &Route{})
+			err := routeTree.Insert(routePath, &Route{
+				service:    rule.RPCRule.Service,
+				methodName: rule.RPCRule.Method,
+				bodyField:  rule.HTTPRule.Body,
+				invoke:     endpoint.GetInvoker(rule.RPCRule.Service, rule.RPCRule.Method),
+			})
 			if err != nil {
 				// TODO log error
 				continue

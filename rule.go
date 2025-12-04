@@ -2,7 +2,9 @@ package pilot
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/pkg/errors"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -10,12 +12,22 @@ import (
 )
 
 type HTTPRule struct {
-	Method string
-	Path   string
-	Body   string
+	Method string `json:"method"`
+	Path   string `json:"path"`
+	Body   string `json:"body"`
 }
 
-func extractHTTPRule(method protoreflect.MethodDescriptor) ([]HTTPRule, error) {
+type RPCRule struct {
+	Service string `json:"service"`
+	Method  string `json:"method"`
+}
+
+type Rule struct {
+	HTTPRule HTTPRule `json:"http_rule"`
+	RPCRule  RPCRule  `json:"rpc_rule"`
+}
+
+func extractRule(method protoreflect.MethodDescriptor) ([]Rule, error) {
 	opts := method.Options()
 	if opts == nil {
 		return nil, nil
@@ -41,23 +53,34 @@ func extractHTTPRule(method protoreflect.MethodDescriptor) ([]HTTPRule, error) {
 		return nil, nil
 	}
 
-	rules := make([]HTTPRule, 0)
+	rules := make([]Rule, 0)
 
-	mainRule, err := parseHTTPRule(httpRule)
+	rpcRule, err := parseRPCRule(string(method.FullName()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTTP rule: %w", err)
+		return nil, errors.WithMessage(err, "failed to parse RPC rule")
 	}
-	if mainRule != nil {
-		rules = append(rules, *mainRule)
+
+	mainHTTPRule, err := parseHTTPRule(httpRule)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to parse HTTP rule")
+	}
+	if mainHTTPRule != nil {
+		rules = append(rules, Rule{
+			HTTPRule: *mainHTTPRule,
+			RPCRule:  *rpcRule,
+		})
 	}
 
 	for _, additionalRule := range httpRule.AdditionalBindings {
-		rule, err := parseHTTPRule(additionalRule)
+		additionalHTTPRule, err := parseHTTPRule(additionalRule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse additional binding: %w", err)
 		}
-		if rule != nil {
-			rules = append(rules, *rule)
+		if additionalHTTPRule != nil {
+			rules = append(rules, Rule{
+				HTTPRule: *additionalHTTPRule,
+				RPCRule:  *rpcRule,
+			})
 		}
 	}
 
@@ -97,4 +120,34 @@ func parseHTTPRule(rule *annotations.HttpRule) (*HTTPRule, error) {
 	}
 
 	return httpRule, nil
+}
+
+func parseRPCRule(fullMethod string) (*RPCRule, error) {
+	service, method, err := parseFullMethod(fullMethod)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RPCRule{
+		Service: service,
+		Method:  method,
+	}, nil
+}
+
+// parseFullMethod splits a full method name into service and method components.
+// eq: "/package.Service/Method" or "package.Service.Method"
+func parseFullMethod(fullMethod string) (serviceName, method string, err error) {
+	fullMethod = strings.TrimPrefix(fullMethod, "/")
+
+	// Try to split by '/' first
+	if idx := strings.LastIndex(fullMethod, "/"); idx > 0 {
+		return fullMethod[:idx], fullMethod[idx+1:], nil
+	}
+
+	// Fallback to splitting by '.'
+	if idx := strings.LastIndex(fullMethod, "."); idx > 0 {
+		return fullMethod[:idx], fullMethod[idx+1:], nil
+	}
+
+	return "", "", errors.Errorf("invalid method name format: %s", fullMethod)
 }

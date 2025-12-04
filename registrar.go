@@ -171,7 +171,7 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 }
 
 // extractRules extracts HTTP rules from the compiled FileDescriptorSet
-func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]HTTPRule, error) {
+func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]Rule, error) {
 	// Convert FileDescriptorSet to FileDescriptors
 	fileDescriptors, err := fileDescriptorSet2FileDescriptor(fd)
 	if err != nil {
@@ -179,7 +179,7 @@ func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]
 	}
 
 	// Extract HTTP rules from services and methods
-	var rules []HTTPRule
+	var rules []Rule
 	for _, fileDescriptor := range fileDescriptors {
 		services := fileDescriptor.Services()
 		for i := 0; i < services.Len(); i++ {
@@ -187,7 +187,7 @@ func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]
 			methods := service.Methods()
 			for j := 0; j < methods.Len(); j++ {
 				method := methods.Get(j)
-				httpRule, err := extractHTTPRule(method)
+				httpRule, err := extractRule(method)
 				if err != nil {
 					return nil, err
 				}

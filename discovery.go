@@ -18,7 +18,7 @@ type ServiceInstance struct {
 type ServiceMetadata struct {
 	Name              string                        `json:"name"`
 	Addr              string                        `json:"addr"`
-	Rules             []HTTPRule                    `json:"rules"`
+	Rules             []Rule                        `json:"rules"`
 	ProtoDSL          string                        `json:"proto_dsl"`
 	FileDescriptorSet *descriptor.FileDescriptorSet `json:"-"`
 }

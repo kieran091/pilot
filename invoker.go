@@ -3,7 +3,6 @@ package pilot
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -126,14 +125,14 @@ func NewGRPCInvoker(addr string, fds *descriptorpb.FileDescriptorSet) (*GRPCInvo
 
 // Invoke calls a gRPC method by its name with the given input in JSON format.
 // It returns the response in JSON format.
-func (inv *GRPCInvoker) Invoke(ctx context.Context, methodName string, input []byte) ([]byte, error) {
+func (inv *GRPCInvoker) Invoke(ctx context.Context, service, method string, input []byte) ([]byte, error) {
 	if _, ok := ctx.Deadline(); ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 	}
 
-	methodInfo, err := inv.getMethodInfo(methodName)
+	methodInfo, err := inv.getMethodInfo(service, method)
 	if err != nil {
 		return nil, err
 	}
@@ -165,36 +164,32 @@ func (inv *GRPCInvoker) Invoke(ctx context.Context, methodName string, input []b
 
 // getMethodInfo retrieves method information for a given method name, utilizing caching for efficiency.
 // The method name can be in the format "/package.Service/Method" or "package.Service.Method".
-func (inv *GRPCInvoker) getMethodInfo(methodName string) (*MethodInfo, error) {
-	if cached, ok := inv.methodCache.Load(methodName); ok {
+func (inv *GRPCInvoker) getMethodInfo(service, method string) (*MethodInfo, error) {
+	fullMethod := fmt.Sprintf("/%s/%s", service, method)
+	if cached, ok := inv.methodCache.Load(fullMethod); ok {
 		return cached.(*MethodInfo), nil
 	}
 
-	serviceName, method, err := parseMethodName(methodName)
+	desc, err := inv.files.FindDescriptorByName(protoreflect.FullName(service))
 	if err != nil {
-		return nil, err
-	}
-
-	desc, err := inv.files.FindDescriptorByName(protoreflect.FullName(serviceName))
-	if err != nil {
-		return nil, errors.WithMessagef(err, "service %s not found", serviceName)
+		return nil, errors.WithMessagef(err, "service %s not found", service)
 	}
 
 	serviceDesc, ok := desc.(protoreflect.ServiceDescriptor)
 	if !ok {
-		return nil, errors.Errorf("%s is not a service descriptor", serviceName)
+		return nil, errors.Errorf("%s is not a service descriptor", service)
 	}
 
 	methodDesc := serviceDesc.Methods().ByName(protoreflect.Name(method))
 	if methodDesc == nil {
-		return nil, errors.Errorf("method %s not found in service %s", method, serviceName)
+		return nil, errors.Errorf("method %s not found in service %s", method, service)
 	}
 
 	info := &MethodInfo{
 		MethodDesc: methodDesc,
 		InputDesc:  methodDesc.Input(),
 		OutputDesc: methodDesc.Output(),
-		FullMethod: fmt.Sprintf("/%s/%s", serviceName, method),
+		FullMethod: fullMethod,
 	}
 	info.reqPool = sync.Pool{
 		New: func() any {
@@ -207,29 +202,11 @@ func (inv *GRPCInvoker) getMethodInfo(methodName string) (*MethodInfo, error) {
 		},
 	}
 
-	actual, _ := inv.methodCache.LoadOrStore(methodName, info)
+	actual, _ := inv.methodCache.LoadOrStore(fullMethod, info)
 	return actual.(*MethodInfo), nil
 }
 
 // Close closes the underlying gRPC connection.
 func (inv *GRPCInvoker) Close() error {
 	return inv.conn.Close()
-}
-
-// parseMethodName splits a full method name into service and method components.
-// eq: "/package.Service/Method" or "package.Service.Method"
-func parseMethodName(methodName string) (serviceName, method string, err error) {
-	methodName = strings.TrimPrefix(methodName, "/")
-
-	// Try to split by '/' first
-	if idx := strings.LastIndex(methodName, "/"); idx > 0 {
-		return methodName[:idx], methodName[idx+1:], nil
-	}
-
-	// Fallback to splitting by '.'
-	if idx := strings.LastIndex(methodName, "."); idx > 0 {
-		return methodName[:idx], methodName[idx+1:], nil
-	}
-
-	return "", "", errors.Errorf("invalid method name format: %s", methodName)
 }
