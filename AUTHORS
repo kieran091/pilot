@@ -1,0 +1,87 @@
+# Pilot Project Contributors
+
+This project is maintained and developed by the following contributors and organizations.
+
+## Project Founder and Main Maintainer
+
+- Kieran (kieran091) <https://github.com/kieran091>
+  - Project architecture design
+  - Core feature development
+  - Project maintenance and management
+
+## Contributors
+
+We thank all developers who have contributed to the Pilot project!
+
+### Core Contributions
+- (Awaiting your contribution!)
+
+### Documentation Contributions
+- (Awaiting your contribution!)
+
+### Testing Contributions
+- (Awaiting your contribution!)
+
+### Community Contributions
+- (Awaiting your contribution!)
+
+## Special Thanks
+
+### Dependency Projects
+We thank the following open-source projects for providing important foundational support to Pilot:
+
+- [gRPC](https://github.com/grpc/grpc-go) - High-performance RPC framework
+- [etcd](https://github.com/etcd-io/etcd) - Distributed key-value storage system
+- [Protocol Buffers](https://github.com/protocolbuffers/protobuf) - Data serialization protocol
+- [Go](https://golang.org/) - Programming language and standard library
+
+### Design Inspiration
+- [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway) - gRPC to HTTP proxy
+- [Istio](https://istio.io/) - Service mesh platform
+- [Envoy](https://envoyproxy.io/) - Cloud-native proxy
+
+### Community Support
+We thank the following communities and organizations for their support:
+
+- [Go Community](https://golang.org/community/)
+- [CNCF](https://www.cncf.io/) - Cloud Native Computing Foundation
+- [GitHub Community](https://github.com/)
+
+## How to Become a Contributor
+
+We welcome all forms of contributions! Please check the [Contributing Guide](CONTRIBUTING.md) to learn how to participate in the project.
+
+### Contribution Types
+- 🐛 Bug fixes
+- ✨ New feature development
+- 📝 Documentation improvements
+- 🧪 Test case writing
+- 🌐 Internationalization support
+- 🎨 UI/UX design
+- 📊 Performance optimization
+- 🛡️ Security improvements
+
+### Contributor Benefits
+- Listed in AUTHORS file
+- Acknowledged in project releases
+- Participate in project decision discussions
+- Priority technical support
+
+## Ranking Explanation
+
+This file is ordered as follows:
+1. Project founder and core maintainers
+2. Code contributors (sorted by commit time)
+3. Documentation contributors
+4. Community contributors
+5. Specially thanked organizations and individuals
+
+## Update Frequency
+
+The AUTHORS file is updated with each major version release. If you find any omissions or errors, please submit an Issue or Pull Request.
+
+---
+
+**Note:** If you do not wish to be listed in the AUTHORS file, please send an email to privacy@pilot.dev and we will process it promptly.
+
+**Last updated:** 2024-12-04
