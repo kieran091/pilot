@@ -31,13 +31,13 @@ type MethodInfo struct {
 
 // getRequest retrieves a request message from the pool.
 func (m *MethodInfo) getRequest() *dynamicpb.Message {
-	return m.respPool.Get().(*dynamicpb.Message)
+	return m.reqPool.Get().(*dynamicpb.Message)
 }
 
 // putRequest returns a request message to the pool.
 func (m *MethodInfo) putRequest(msg *dynamicpb.Message) {
 	msg.Reset()
-	m.respPool.Put(msg)
+	m.reqPool.Put(msg)
 }
 
 // getResponse retrieves a response message from the pool.

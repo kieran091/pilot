@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kieran091/pilot"
 	"github.com/kieran091/pilot/example/apps/user/pb/user"
 	"google.golang.org/grpc"
@@ -18,6 +19,13 @@ import (
 
 type UserServer struct {
 	user.UnimplementedUserServer
+}
+
+func (s *UserServer) CreateUser(ctx context.Context, req *user.CreateUserReq) (*user.CreateUserResp, error) {
+	fmt.Printf("email=%s, name=%s, password=%s", req.Email, req.Name, req.Password)
+	return &user.CreateUserResp{
+		Id: uuid.New().String(),
+	}, nil
 }
 
 func (s *UserServer) GetUser(_ context.Context, req *user.GetUserReq) (*user.GetUserResp, error) {

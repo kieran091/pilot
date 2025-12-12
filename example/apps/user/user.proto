@@ -15,10 +15,27 @@ message GetUserResp {
   string name = 2;
 }
 
+message CreateUserReq {
+  string email = 1;
+  string name = 2;
+  string password = 3;
+}
+
+message CreateUserResp {
+  string id = 1;
+}
+
 service User {
   rpc get_user(GetUserReq) returns (GetUserResp) {
     option (google.api.http) = {
       get: "/v1/user/:id"
+    };
+  }
+
+  rpc create_user(CreateUserReq) returns (CreateUserResp) {
+    option (google.api.http) = {
+      post: "/v1/user/create",
+      body: "*"
     };
   }
 }
