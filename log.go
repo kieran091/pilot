@@ -87,7 +87,7 @@ func buildLogEvent(c *Context, isError bool) *zerolog.Event {
 
 	event := defaultLogger.Info()
 	if isError {
-		event = defaultLogger.Error()
+		event = defaultLogger.Warn()
 	}
 
 	event = event.
