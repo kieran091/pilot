@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kieran091/pilot"
+	"github.com/kieran091/pilot/discovery/etcd"
 	"github.com/kieran091/pilot/example/apps/user/pb/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -43,7 +44,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	etcdRegistry, err := pilot.NewEtcdRegistry(
+	etcdRegistry, err := etcd.NewRegistry(
 		[]string{"127.0.0.1:2379"},
 		10*time.Second,
 		"test/server",

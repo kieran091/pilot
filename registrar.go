@@ -12,6 +12,7 @@ import (
 
 	"github.com/bufbuild/protocompile"
 	"github.com/google/uuid"
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -41,14 +42,14 @@ type ServiceRegistrar struct {
 	addr        string
 	instanceId  string
 
-	registry Registry
+	registry discovery.Registry
 
 	files      []string
 	protoPaths []string
 	compiler   *protocompile.Compiler
 }
 
-func NewServiceRegistrar(serviceName, listenOn string, registry Registry) *ServiceRegistrar {
+func NewServiceRegistrar(serviceName, listenOn string, registry discovery.Registry) *ServiceRegistrar {
 	return &ServiceRegistrar{
 		serviceName: serviceName,
 		addr:        figureOutListenOn(listenOn),
@@ -65,7 +66,7 @@ func NewServiceRegistrar(serviceName, listenOn string, registry Registry) *Servi
 	}
 }
 
-// Register compiles the proto files, extracts HTTP rules, and registers the service
+// Register compiles the proto files, extracts Server rules, and registers the service
 func (sr *ServiceRegistrar) Register(ctx context.Context, opts ...RegisterOption) error {
 	// Apply options
 	for _, opt := range opts {
@@ -78,23 +79,23 @@ func (sr *ServiceRegistrar) Register(ctx context.Context, opts ...RegisterOption
 		return err
 	}
 
-	// Extract HTTP rules
-	rules, err := sr.extractRules(fds)
+	// Extract Server routes
+	routes, err := sr.extractRoutes(fds)
 	if err != nil {
 		return err
 	}
 
 	// Serialize the FileDescriptorSet to proto DSL
-	protoDsl, err := proto.Marshal(fds)
+	pb, err := proto.Marshal(fds)
 	if err != nil {
 		return err
 	}
 
-	serviceMetadata := ServiceMetadata{
+	serviceMetadata := discovery.Definition{
 		Name:  sr.serviceName,
 		Addr:  sr.addr,
-		Rules: rules,
-		Pb:    base64.StdEncoding.EncodeToString(protoDsl),
+		Routes: routes,
+		PB:    base64.StdEncoding.EncodeToString(pb),
 	}
 
 	return sr.registry.Register(ctx, sr.serviceName, sr.instanceId, &serviceMetadata)
@@ -170,16 +171,16 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 	return fds, nil
 }
 
-// extractRules extracts HTTP rules from the compiled FileDescriptorSet
-func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]Rule, error) {
+// extractRoutes extracts Server rules from the compiled FileDescriptorSet
+func (sr *ServiceRegistrar) extractRoutes(fd *descriptorpb.FileDescriptorSet) ([]discovery.Route, error) {
 	// Convert FileDescriptorSet to FileDescriptors
 	fileDescriptors, err := fileDescriptorSet2FileDescriptor(fd)
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract HTTP rules from services and methods
-	var rules []Rule
+	// Extract Server rules from services and methods
+	var rules []discovery.Route
 	for _, fileDescriptor := range fileDescriptors {
 		services := fileDescriptor.Services()
 		for i := 0; i < services.Len(); i++ {
@@ -187,11 +188,11 @@ func (sr *ServiceRegistrar) extractRules(fd *descriptorpb.FileDescriptorSet) ([]
 			methods := service.Methods()
 			for j := 0; j < methods.Len(); j++ {
 				method := methods.Get(j)
-				httpRule, err := extractRule(method)
+				httpRoute, err := extractRoute(method)
 				if err != nil {
 					return nil, err
 				}
-				rules = append(rules, httpRule...)
+				rules = append(rules, httpRoute...)
 			}
 		}
 	}

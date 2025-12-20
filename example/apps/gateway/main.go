@@ -6,20 +6,22 @@ import (
 	"time"
 
 	"github.com/kieran091/pilot"
+	"github.com/kieran091/pilot/discovery"
+	"github.com/kieran091/pilot/discovery/etcd"
 )
 
 func main() {
 	cfg := pilot.Config{
-		HTTP: pilot.HTTPConfig{
-			Addr:           ":8000",
+		Server: &pilot.ServerConfig{
+			Address:        ":8000",
 			ReadTimeout:    30 * time.Second,
 			WriteTimeout:   30 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 			MaxBodyBytes:   10 << 20,
 		},
-		Discovery: pilot.DiscoveryConfig{
-			Mode: pilot.Etcd,
-			Etcd: &pilot.EtcdConfig{
+		Discovery: &pilot.ServiceDiscoveryConfig{
+			Mode: discovery.EtcdMode,
+			Etcd: &pilot.EtcdRegistryConfig{
 				Endpoints:     []string{"127.0.0.1:2379"},
 				DiscoveryPath: "test/server",
 				DialTimeout:   5 * time.Second,
@@ -27,7 +29,7 @@ func main() {
 		},
 	}
 
-	watcher, err := pilot.NewEtcdWatcher(
+	watcher, err := etcd.NewWatcher(
 		cfg.Discovery.Etcd.Endpoints,
 		cfg.Discovery.Etcd.DialTimeout,
 		cfg.Discovery.Etcd.DiscoveryPath,

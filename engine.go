@@ -7,6 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/kieran091/pilot/discovery"
+	"github.com/kieran091/pilot/discovery/etcd"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -21,7 +24,7 @@ func WithContext(ctx context.Context) EngineOption {
 	}
 }
 
-func WithWatcher(w Watcher) EngineOption {
+func WithWatcher(w discovery.Watcher) EngineOption {
 	return func(e *Engine) {
 		e.watcher = w
 	}
@@ -37,7 +40,7 @@ type Engine struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	watcher Watcher
+	watcher discovery.Watcher
 }
 
 func NewEngine(cfg Config, opts ...EngineOption) (*Engine, error) {
@@ -59,7 +62,7 @@ func NewEngine(cfg Config, opts ...EngineOption) (*Engine, error) {
 	}
 
 	if engine.watcher == nil {
-		watcher, err := NewEtcdWatcher(cfg.Discovery.Etcd.Endpoints, cfg.Discovery.Etcd.DialTimeout, cfg.Discovery.Etcd.DiscoveryPath)
+		watcher, err := etcd.NewWatcher(cfg.Discovery.Etcd.Endpoints, cfg.Discovery.Etcd.DialTimeout, cfg.Discovery.Etcd.DiscoveryPath)
 		if err != nil {
 			return nil, err
 		}
@@ -73,11 +76,11 @@ func NewEngine(cfg Config, opts ...EngineOption) (*Engine, error) {
 	var handler http.Handler = mux
 
 	engine.server = &http.Server{
-		Addr:           cfg.HTTP.Addr,
+		Addr:           cfg.Server.Address,
 		Handler:        handler,
-		ReadTimeout:    cfg.HTTP.ReadTimeout,
-		WriteTimeout:   cfg.HTTP.WriteTimeout,
-		MaxHeaderBytes: cfg.HTTP.MaxHeaderBytes,
+		ReadTimeout:    cfg.Server.ReadTimeout,
+		WriteTimeout:   cfg.Server.WriteTimeout,
+		MaxHeaderBytes: cfg.Server.MaxHeaderBytes,
 	}
 
 	return engine, nil
@@ -129,14 +132,14 @@ func (e *Engine) handleWatchEvents() {
 			return
 		case event := <-eventChan:
 			switch event.Type {
-			case EventAdd:
+			case discovery.Added:
 				if err := e.router.insert(event.ServiceInfo); err != nil {
 					defaultLogger.Error().
 						Str("service", event.ServiceInfo.Name).
 						Err(err).
 						Msg("failed to insert service into router")
 				}
-			case EventDelete:
+			case discovery.Removed:
 				if err := e.router.delete(event.ServiceInfo); err != nil {
 					defaultLogger.Error().
 						Str("service", event.ServiceInfo.Name).
@@ -154,7 +157,7 @@ func (e *Engine) listenAndServe() error {
 		return err
 	}
 
-	defaultLogger.Info().Str("addr", e.server.Addr).Msg("HTTP server start successful")
+	defaultLogger.Info().Str("addr", e.server.Addr).Msg("Server server start successful")
 
 	return e.server.Serve(listener)
 }

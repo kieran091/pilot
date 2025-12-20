@@ -2,7 +2,9 @@ package pilot
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -104,4 +106,54 @@ func (c *Context) AddError(err error) {
 
 func (c *Context) Duration() time.Duration {
 	return time.Since(c.startTime)
+}
+
+func (c *Context) ClientIP() string {
+	// X-Forwarded-For
+	if xff := c.Request.Header.Get("X-Forwarded-For"); xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			ip := strings.TrimSpace(ips[0])
+			if net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+
+	// X-Real-IP
+	if xri := c.Request.Header.Get("X-Real-IP"); xri != "" {
+		if net.ParseIP(xri) != nil {
+			return xri
+		}
+	}
+
+	// X-Client-IP
+	if xci := c.Request.Header.Get("X-Client-IP"); xci != "" {
+		if net.ParseIP(xci) != nil {
+			return xci
+		}
+	}
+
+	// CF-Connecting-IP (Cloudflare)
+	if cfip := c.Request.Header.Get("CF-Connecting-IP"); cfip != "" {
+		if net.ParseIP(cfip) != nil {
+			return cfip
+		}
+	}
+
+	// True-Client-IP
+	if tci := c.Request.Header.Get("True-Client-IP"); tci != "" {
+		if net.ParseIP(tci) != nil {
+			return tci
+		}
+	}
+
+	// RemoteAddr
+	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
+		if net.ParseIP(ip) != nil {
+			return ip
+		}
+	}
+
+	return c.Request.RemoteAddr
 }

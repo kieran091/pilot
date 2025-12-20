@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/googleapis/api/annotations"
 	"google.golang.org/protobuf/proto"
@@ -11,23 +12,8 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-type HTTPRule struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
-	Body   string `json:"body"`
-}
 
-type RPCRule struct {
-	Service string `json:"service"`
-	Method  string `json:"method"`
-}
-
-type Rule struct {
-	HTTPRule HTTPRule `json:"http_rule"`
-	RPCRule  RPCRule  `json:"rpc_rule"`
-}
-
-func extractRule(method protoreflect.MethodDescriptor) ([]Rule, error) {
+func extractRoute(method protoreflect.MethodDescriptor) ([]discovery.Route, error) {
 	opts := method.Options()
 	if opts == nil {
 		return nil, nil
@@ -48,38 +34,38 @@ func extractRule(method protoreflect.MethodDescriptor) ([]Rule, error) {
 	}
 
 	ext := proto.GetExtension(methodOptions, annotations.E_Http)
-	httpRule, ok := ext.(*annotations.HttpRule)
+	httpRoute, ok := ext.(*annotations.HttpRule)
 	if !ok {
 		return nil, nil
 	}
 
-	rules := make([]Rule, 0)
+	rules := make([]discovery.Route, 0)
 
-	rpcRule, err := parseRPCRule(string(method.FullName()))
+	rpcRoute, err := parseRPCRoute(string(method.FullName()))
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to parse RPC rule")
 	}
 
-	mainHTTPRule, err := parseHTTPRule(httpRule)
+	mainHTTPRoute, err := parseHTTPRoute(httpRoute)
 	if err != nil {
-		return nil, errors.WithMessage(err, "failed to parse HTTP rule")
+		return nil, errors.WithMessage(err, "failed to parse Server rule")
 	}
-	if mainHTTPRule != nil {
-		rules = append(rules, Rule{
-			HTTPRule: *mainHTTPRule,
-			RPCRule:  *rpcRule,
+	if mainHTTPRoute != nil {
+		rules = append(rules, discovery.Route{
+			HTTPRoute: *mainHTTPRoute,
+			RPCRoute:  *rpcRoute,
 		})
 	}
 
-	for _, additionalRule := range httpRule.AdditionalBindings {
-		additionalHTTPRule, err := parseHTTPRule(additionalRule)
+	for _, additionalRule := range httpRoute.AdditionalBindings {
+		additionalHTTPRoute, err := parseHTTPRoute(additionalRule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse additional binding: %w", err)
 		}
-		if additionalHTTPRule != nil {
-			rules = append(rules, Rule{
-				HTTPRule: *additionalHTTPRule,
-				RPCRule:  *rpcRule,
+		if additionalHTTPRoute != nil {
+			rules = append(rules, discovery.Route{
+				HTTPRoute: *additionalHTTPRoute,
+				RPCRoute:  *rpcRoute,
 			})
 		}
 	}
@@ -87,48 +73,48 @@ func extractRule(method protoreflect.MethodDescriptor) ([]Rule, error) {
 	return rules, nil
 }
 
-func parseHTTPRule(rule *annotations.HttpRule) (*HTTPRule, error) {
+func parseHTTPRoute(rule *annotations.HttpRule) (*discovery.HTTPRoute, error) {
 	if rule == nil {
 		return nil, nil
 	}
 
-	httpRule := &HTTPRule{
+	httpRoute := &discovery.HTTPRoute{
 		Body: rule.Body,
 	}
 
 	switch pattern := rule.Pattern.(type) {
 	case *annotations.HttpRule_Get:
-		httpRule.Method = "GET"
-		httpRule.Path = pattern.Get
+		httpRoute.Method = "GET"
+		httpRoute.Path = pattern.Get
 	case *annotations.HttpRule_Post:
-		httpRule.Method = "POST"
-		httpRule.Path = pattern.Post
+		httpRoute.Method = "POST"
+		httpRoute.Path = pattern.Post
 	case *annotations.HttpRule_Put:
-		httpRule.Method = "PUT"
-		httpRule.Path = pattern.Put
+		httpRoute.Method = "PUT"
+		httpRoute.Path = pattern.Put
 	case *annotations.HttpRule_Delete:
-		httpRule.Method = "DELETE"
-		httpRule.Path = pattern.Delete
+		httpRoute.Method = "DELETE"
+		httpRoute.Path = pattern.Delete
 	case *annotations.HttpRule_Patch:
-		httpRule.Method = "PATCH"
-		httpRule.Path = pattern.Patch
+		httpRoute.Method = "PATCH"
+		httpRoute.Path = pattern.Patch
 	case *annotations.HttpRule_Custom:
-		httpRule.Method = pattern.Custom.Kind
-		httpRule.Path = pattern.Custom.Path
+		httpRoute.Method = pattern.Custom.Kind
+		httpRoute.Path = pattern.Custom.Path
 	default:
-		return nil, fmt.Errorf("unknown HTTP rule pattern type")
+		return nil, fmt.Errorf("unknown Server rule pattern type")
 	}
 
-	return httpRule, nil
+	return httpRoute, nil
 }
 
-func parseRPCRule(fullMethod string) (*RPCRule, error) {
+func parseRPCRoute(fullMethod string) (*discovery.RPCRoute, error) {
 	service, method, err := parseFullMethod(fullMethod)
 	if err != nil {
 		return nil, err
 	}
 
-	return &RPCRule{
+	return &discovery.RPCRoute{
 		Service: service,
 		Method:  method,
 	}, nil

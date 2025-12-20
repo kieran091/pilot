@@ -6,12 +6,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 )
 
 type InvokerFunc func(ctx *Context, key string, input []byte) ([]byte, error)
 
-// routeTrees maps HTTP methods to their corresponding route trees
+// routeTrees maps Server methods to their corresponding route trees
 type routeTrees map[string]*RouteTree[*Route]
 
 func (mt routeTrees) getTree(method string) (*RouteTree[*Route], bool) {
@@ -19,7 +20,7 @@ func (mt routeTrees) getTree(method string) (*RouteTree[*Route], bool) {
 	return methodTree, exists
 }
 
-// Route represents an HTTP-to-gRPC routing configuration
+// Route represents an Server-to-gRPC routing configuration
 type Route struct {
 	// service is the name of the gRPC service.
 	// e.g. "user.User"
@@ -29,7 +30,7 @@ type Route struct {
 	// e.g. "get_user"
 	methodName string
 
-	// bodyField is the field in the HTTP request body to be mapped to the gRPC request message.
+	// bodyField is the field in the Server request body to be mapped to the gRPC request message.
 	//
 	//	rpc get_user(GetUserRequest) returns (UserResponse) {
 	//		option (google.api.http) = {
@@ -37,7 +38,7 @@ type Route struct {
 	//			body: "*"
 	//		}
 	//	}
-	// In this example, bodyField is "*", indicating that the entire HTTP request body should be mapped to the gRPC request message.
+	// In this example, bodyField is "*", indicating that the entire Server request body should be mapped to the gRPC request message.
 	//
 	//	rpc get_user(GetUserRequest) returns (UserResponse) {
 	//		option (google.api.http) = {
@@ -45,7 +46,7 @@ type Route struct {
 	//			body: "user"
 	//		}
 	//	}
-	// In this example, the bodyField is set to "user", indicating that the entire HTTP request body should be mapped to the "user" field in the gRPC request message.
+	// In this example, the bodyField is set to "user", indicating that the entire Server request body should be mapped to the "user" field in the gRPC request message.
 	bodyField string
 
 	// invoke is the function to invoke the gRPC method.
@@ -53,11 +54,11 @@ type Route struct {
 	invoke InvokerFunc
 }
 
-// Router manages HTTP-to-gRPC routing with service discovery and load balancing
+// Router manages Server-to-gRPC routing with service discovery and load balancing
 type Router struct {
 	trees routeTrees
 
-	// routeIndex maps service name to route path to HTTP method for quick lookup
+	// routeIndex maps service name to route path to Server method for quick lookup
 	routeIndex map[string]map[string]string // service name -> route path -> method name
 	// pathIndex stores all registered paths for duplicate detection
 	pathIndex map[string]struct{}
@@ -113,7 +114,7 @@ func (r *Router) Close() {
 // There are two scenarios
 // 1.When the service is new, create a new service endpoint and add routes.
 // 2.When the service already exists, only add the new instance without adding routes.
-func (r *Router) insert(serviceInfo *ServiceInfo) error {
+func (r *Router) insert(serviceInfo *discovery.Registration) error {
 	if r.isClosed() {
 		return errors.New("router is closed")
 	}
@@ -129,7 +130,7 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	r.mu.Lock()
 	endpoint, exists = r.serviceRegistry[serviceInfo.Name]
 	if !exists {
-		endpoint, err = newServiceEndpoint(150, serviceInfo.Name, serviceInfo.Pb)
+		endpoint, err = newServiceEndpoint(150, serviceInfo.Name, serviceInfo.PB)
 		if err != nil {
 			r.mu.Unlock()
 			return errors.WithMessage(err, "failed to create service endpoint")
@@ -145,11 +146,11 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 	endpoint.addInstance(serviceInfo.Instance)
 
 	if needToInsertRoute {
-		for _, rule := range serviceInfo.Rules {
-			routePath := normalizePath(rule.HTTPRule.Path)
+		for _, rule := range serviceInfo.Routes {
+			routePath := normalizePath(rule.HTTPRoute.Path)
 
 			r.mu.Lock()
-			methodUpper := strings.ToUpper(rule.HTTPRule.Method)
+			methodUpper := strings.ToUpper(rule.HTTPRoute.Method)
 			routeTree, exists := r.trees.getTree(methodUpper)
 			if !exists {
 				routeTree = NewRouteTree[*Route]()
@@ -157,10 +158,10 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 			}
 
 			err := routeTree.Insert(routePath, &Route{
-				service:    rule.RPCRule.Service,
-				methodName: rule.RPCRule.Method,
-				bodyField:  rule.HTTPRule.Body,
-				invoke:     endpoint.GetInvoker(rule.RPCRule.Service, rule.RPCRule.Method),
+				service:    rule.RPCRoute.Service,
+				methodName: rule.RPCRoute.Method,
+				bodyField:  rule.HTTPRoute.Body,
+				invoke:     endpoint.GetInvoker(rule.RPCRoute.Service, rule.RPCRoute.Method),
 			})
 			if err != nil {
 				defaultLogger.Error().
@@ -193,7 +194,7 @@ func (r *Router) insert(serviceInfo *ServiceInfo) error {
 // There are two scenarios
 // 1.When there are more than one instance in the list, only delete the instance without deleting the route.
 // 2.When there is only one instance, delete both the instance and the corresponding route.
-func (r *Router) delete(serviceInfo *ServiceInfo) error {
+func (r *Router) delete(serviceInfo *discovery.Registration) error {
 	if r.isClosed() {
 		return errors.New("router is closed")
 	}

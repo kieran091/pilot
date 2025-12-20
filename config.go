@@ -1,29 +1,33 @@
 package pilot
 
-import "time"
+import (
+	"time"
 
-type HTTPConfig struct {
-	Addr           string
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	MaxHeaderBytes int
-	MaxBodyBytes   int
+	"github.com/kieran091/pilot/discovery"
+)
+
+type ServerConfig struct {
+	Address        string        `json:"address" yaml:"address"`
+	ReadTimeout    time.Duration `json:"readTimeout" yaml:"readTimeout"`
+	WriteTimeout   time.Duration `json:"writeTimeout" yaml:"writeTimeout"`
+	MaxHeaderBytes int           `json:"maxHeaderBytes" yaml:"maxHeaderBytes"`
+	MaxBodyBytes   int           `json:"maxBodyBytes" yaml:"maxBodyBytes"`
 }
 
-type EtcdConfig struct {
-	Endpoints     []string
-	DiscoveryPath string
-	DialTimeout   time.Duration
+type EtcdRegistryConfig struct {
+	Endpoints     []string      `json:"endpoints" yaml:"endpoints"`
+	DiscoveryPath string        `json:"discoveryPath" yaml:"discoveryPath"`
+	DialTimeout   time.Duration `json:"dialTimeout" yaml:"dialTimeout"`
 }
 
-type DiscoveryConfig struct {
-	Mode Mode
-	Etcd *EtcdConfig
+type ServiceDiscoveryConfig struct {
+	Mode discovery.Mode      `json:"mode" yaml:"mode"`
+	Etcd *EtcdRegistryConfig `json:"etcd" yaml:"etcd"`
 }
 
 type Config struct {
-	HTTP      HTTPConfig
-	Discovery DiscoveryConfig
+	Server    *ServerConfig           `json:"server" yaml:"server"`
+	Discovery *ServiceDiscoveryConfig `json:"discovery" yaml:"discovery"`
 }
 
 const (
@@ -38,24 +42,24 @@ const (
 )
 
 func (c *Config) setDefaults() {
-	if c.HTTP.Addr == "" {
-		c.HTTP.Addr = defaultHTTPAddr
+	if c.Server.Address == "" {
+		c.Server.Address = defaultHTTPAddr
 	}
-	if c.HTTP.ReadTimeout == 0 {
-		c.HTTP.ReadTimeout = defaultHTTPReadTimeout
+	if c.Server.ReadTimeout == 0 {
+		c.Server.ReadTimeout = defaultHTTPReadTimeout
 	}
-	if c.HTTP.WriteTimeout == 0 {
-		c.HTTP.WriteTimeout = defaultHTTPWriteTimeout
+	if c.Server.WriteTimeout == 0 {
+		c.Server.WriteTimeout = defaultHTTPWriteTimeout
 	}
-	if c.HTTP.MaxBodyBytes == 0 {
-		c.HTTP.MaxBodyBytes = defaultHTTPMaxBodyBytes
+	if c.Server.MaxBodyBytes == 0 {
+		c.Server.MaxBodyBytes = defaultHTTPMaxBodyBytes
 	}
 
 	if c.Discovery.Mode == "" {
 		c.Discovery.Mode = defaultDiscoveryMode
 
 		if c.Discovery.Etcd == nil {
-			etcdCfg := &EtcdConfig{
+			etcdCfg := &EtcdRegistryConfig{
 				Endpoints:     []string{defaultEtcdEndpoints},
 				DiscoveryPath: defaultDiscoveryPath,
 				DialTimeout:   defaultEtcdDialTimeout,

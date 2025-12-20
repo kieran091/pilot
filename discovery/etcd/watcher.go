@@ -1,4 +1,4 @@
-package pilot
+package etcd
 
 import (
 	"context"
@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-type EtcdWatcher struct {
+type etcdWatcher struct {
 	client    *clientv3.Client
-	eventChan chan *ServiceEvent
+	eventChan chan *discovery.Event
 	ctx       context.Context
 	cancel    context.CancelFunc
 
@@ -22,7 +23,7 @@ type EtcdWatcher struct {
 	mu sync.RWMutex
 }
 
-func NewEtcdWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath string) (*EtcdWatcher, error) {
+func NewWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath string) (*etcdWatcher, error) {
 	if dialTimeout <= 0 {
 		dialTimeout = 10 * time.Second
 	}
@@ -37,9 +38,9 @@ func NewEtcdWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	w := &EtcdWatcher{
+	w := &etcdWatcher{
 		client:        client,
-		eventChan:     make(chan *ServiceEvent, 100),
+		eventChan:     make(chan *discovery.Event, 100),
 		ctx:           ctx,
 		cancel:        cancel,
 		discoveryPath: discoveryPath,
@@ -48,7 +49,7 @@ func NewEtcdWatcher(endpoints []string, dialTimeout time.Duration, discoveryPath
 	return w, nil
 }
 
-func (ew *EtcdWatcher) Start(_ context.Context) error {
+func (ew *etcdWatcher) Start(_ context.Context) error {
 	if err := ew.loadExistingServices(); err != nil {
 		return errors.WithMessage(err, "failed to load existing services")
 	}
@@ -58,16 +59,16 @@ func (ew *EtcdWatcher) Start(_ context.Context) error {
 	return nil
 }
 
-func (ew *EtcdWatcher) Stop() error {
+func (ew *etcdWatcher) Stop() error {
 	ew.cancel()
 	return nil
 }
 
-func (ew *EtcdWatcher) Watch() <-chan *ServiceEvent {
+func (ew *etcdWatcher) Watch() <-chan *discovery.Event {
 	return ew.eventChan
 }
 
-func (ew *EtcdWatcher) loadExistingServices() error {
+func (ew *etcdWatcher) loadExistingServices() error {
 	ctx, cancel := context.WithTimeout(ew.ctx, 10*time.Second)
 	defer cancel()
 
@@ -76,8 +77,8 @@ func (ew *EtcdWatcher) loadExistingServices() error {
 		return errors.WithMessage(err, "failed to get existing services from etcd")
 	}
 
-	servicesMap := make(map[string][]*ServiceInstance)
-	metadataMap := make(map[string]*ServiceMetadata)
+	servicesMap := make(map[string][]*discovery.Instance)
+	metadataMap := make(map[string]*discovery.Definition)
 
 	for _, kv := range resp.Kvs {
 		serviceName, instanceId := ew.parseServicePath(string(kv.Key))
@@ -94,8 +95,8 @@ func (ew *EtcdWatcher) loadExistingServices() error {
 			metadataMap[serviceName] = serviceMetadata
 		}
 
-		instance := &ServiceInstance{
-			Id:   instanceId,
+		instance := &discovery.Instance{
+			ID:   instanceId,
 			Addr: serviceMetadata.Addr,
 		}
 		servicesMap[serviceName] = append(servicesMap[serviceName], instance)
@@ -108,11 +109,11 @@ func (ew *EtcdWatcher) loadExistingServices() error {
 		serviceMetadata := metadataMap[serviceName]
 		if serviceMetadata != nil {
 			for _, instance := range instances {
-				ew.eventChan <- &ServiceEvent{
-					Type: EventAdd,
-					ServiceInfo: &ServiceInfo{
-						ServiceMetadata: serviceMetadata,
-						Instance:        instance,
+				ew.eventChan <- &discovery.Event{
+					Type: discovery.Added,
+					ServiceInfo: &discovery.Registration{
+						Definition: serviceMetadata,
+						Instance:   instance,
 					},
 				}
 			}
@@ -122,7 +123,7 @@ func (ew *EtcdWatcher) loadExistingServices() error {
 	return nil
 }
 
-func (ew *EtcdWatcher) watchServices() {
+func (ew *etcdWatcher) watchServices() {
 	watchChan := ew.client.Watch(ew.ctx, ew.discoveryPath, clientv3.WithPrefix())
 
 	for {
@@ -140,7 +141,7 @@ func (ew *EtcdWatcher) watchServices() {
 	}
 }
 
-func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
+func (ew *etcdWatcher) handleServiceEvent(event *clientv3.Event) {
 	key := string(event.Kv.Key)
 	serviceName, instanceId := ew.parseServicePath(key)
 	if serviceName == "" || instanceId == "" {
@@ -154,37 +155,33 @@ func (ew *EtcdWatcher) handleServiceEvent(event *clientv3.Event) {
 	case clientv3.EventTypePut:
 		serviceMetadata, err := ew.parseServiceMetadata(event.Kv.Value)
 		if err != nil {
-			defaultLogger.Warn().
-				Str("key", string(event.Kv.Value)).
-				Err(err).
-				Msg("failed to parse service metadata")
 			return
 		}
 
-		ew.eventChan <- &ServiceEvent{
-			Type: EventAdd,
-			ServiceInfo: &ServiceInfo{
-				ServiceMetadata: serviceMetadata,
-				Instance: &ServiceInstance{
-					Id:   instanceId,
+		ew.eventChan <- &discovery.Event{
+			Type: discovery.Added,
+			ServiceInfo: &discovery.Registration{
+				Definition: serviceMetadata,
+				Instance: &discovery.Instance{
+					ID:   instanceId,
 					Addr: serviceMetadata.Addr,
 				},
 			},
 		}
 	case clientv3.EventTypeDelete:
-		ew.eventChan <- &ServiceEvent{
-			Type: EventDelete,
-			ServiceInfo: &ServiceInfo{
-				ServiceMetadata: &ServiceMetadata{Name: serviceName},
-				Instance: &ServiceInstance{
-					Id: instanceId,
+		ew.eventChan <- &discovery.Event{
+			Type: discovery.Removed,
+			ServiceInfo: &discovery.Registration{
+				Definition: &discovery.Definition{Name: serviceName},
+				Instance: &discovery.Instance{
+					ID: instanceId,
 				},
 			},
 		}
 	}
 }
 
-func (ew *EtcdWatcher) parseServicePath(key string) (serviceName string, instanceId string) {
+func (ew *etcdWatcher) parseServicePath(key string) (serviceName string, instanceId string) {
 	if !strings.HasPrefix(key, ew.discoveryPath) {
 		return
 	}
@@ -199,22 +196,11 @@ func (ew *EtcdWatcher) parseServicePath(key string) (serviceName string, instanc
 	return keyParts[0], keyParts[1]
 }
 
-func (ew *EtcdWatcher) parseServiceMetadata(value []byte) (*ServiceMetadata, error) {
-	var serviceMetadata ServiceMetadata
+func (ew *etcdWatcher) parseServiceMetadata(value []byte) (*discovery.Definition, error) {
+	var serviceMetadata discovery.Definition
 	if err := sonic.Unmarshal(value, &serviceMetadata); err != nil {
 		return nil, errors.WithMessage(err, "failed to unmarshal service metadata")
 	}
 
 	return &serviceMetadata, nil
-}
-
-type EtcdWatcherBuilder struct{}
-
-func (b *EtcdWatcherBuilder) Build(conf any) (Watcher, error) {
-	cfg, ok := conf.(*EtcdConfig)
-	if !ok {
-		return nil, errors.New("invalid config type for EtcdWatcher")
-	}
-
-	return NewEtcdWatcher(cfg.Endpoints, cfg.DialTimeout, cfg.DiscoveryPath)
 }

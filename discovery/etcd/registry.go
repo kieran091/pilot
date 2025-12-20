@@ -1,4 +1,4 @@
-package pilot
+package etcd
 
 import (
 	"context"
@@ -6,20 +6,21 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
-// EtcdRegistry etcd适配器实现
-type EtcdRegistry struct {
+// etcdRegistry etcd适配器实现
+type etcdRegistry struct {
 	client        *clientv3.Client
 	leaseId       clientv3.LeaseID
 	keepAliveChan <-chan *clientv3.LeaseKeepAliveResponse
 	discoveryPath string
 }
 
-func NewEtcdRegistry(endpoints []string, dialTimeout time.Duration, discoveryPath string) (*EtcdRegistry, error) {
+func NewRegistry(endpoints []string, dialTimeout time.Duration, discoveryPath string) (*etcdRegistry, error) {
 	if dialTimeout <= 0 {
 		dialTimeout = 10 * time.Second
 	}
@@ -32,13 +33,13 @@ func NewEtcdRegistry(endpoints []string, dialTimeout time.Duration, discoveryPat
 		return nil, errors.WithMessage(err, "failed to create etcd client")
 	}
 
-	return &EtcdRegistry{
+	return &etcdRegistry{
 		client:        client,
 		discoveryPath: discoveryPath,
 	}, nil
 }
 
-func (er *EtcdRegistry) Register(ctx context.Context, serviceName, instanceId string, metadata *ServiceMetadata) error {
+func (er *etcdRegistry) Register(ctx context.Context, serviceName, instanceId string, metadata *discovery.Definition) error {
 	key := path.Join(er.discoveryPath, serviceName, instanceId)
 	value, err := sonic.Marshal(metadata)
 	if err != nil {
@@ -69,7 +70,7 @@ func (er *EtcdRegistry) Register(ctx context.Context, serviceName, instanceId st
 	return nil
 }
 
-func (er *EtcdRegistry) Deregister(ctx context.Context, serviceName, instanceId string) error {
+func (er *etcdRegistry) Deregister(ctx context.Context, serviceName, instanceId string) error {
 	if er.leaseId != 0 {
 		_, err := er.client.Revoke(ctx, er.leaseId)
 		if err != nil {
@@ -86,33 +87,20 @@ func (er *EtcdRegistry) Deregister(ctx context.Context, serviceName, instanceId 
 	return nil
 }
 
-func (er *EtcdRegistry) Update(ctx context.Context, serviceName, instanceId string, metadata *ServiceMetadata) error {
+func (er *etcdRegistry) Update(ctx context.Context, serviceName, instanceId string, metadata *discovery.Definition) error {
 	return er.Register(ctx, serviceName, instanceId, metadata)
 }
 
-func (er *EtcdRegistry) keepAlive() {
+func (er *etcdRegistry) keepAlive() {
 	for {
 		leaseKeepAliveResponse, ok := <-er.keepAliveChan
 		if !ok {
-			zap.L().Warn("Etcd lease keep-alive channel closed")
+			zap.L().Warn("EtcdMode lease keep-alive channel closed")
 			return
 		}
 		if leaseKeepAliveResponse == nil {
-			zap.L().Warn("Etcd lease keep-alive response is nil")
+			zap.L().Warn("EtcdMode lease keep-alive response is nil")
 			return
 		}
 	}
-}
-
-// EtcdRegistryBuilder etcd registry 构造器
-type EtcdRegistryBuilder struct {
-}
-
-func (erb *EtcdRegistryBuilder) Build(conf any) (Registry, error) {
-	cfg, ok := conf.(EtcdConfig)
-	if !ok {
-		return nil, errors.New("invalid config type for EtcdRegistry")
-	}
-
-	return NewEtcdRegistry(cfg.Endpoints, cfg.DialTimeout, cfg.DiscoveryPath)
 }

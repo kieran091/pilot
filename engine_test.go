@@ -5,21 +5,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kieran091/pilot/discovery"
+	"github.com/kieran091/pilot/discovery/etcd"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewEngine(t *testing.T) {
 	cfg := Config{
-		HTTP: HTTPConfig{
-			Addr:           ":8000",
+		Server: &ServerConfig{
+			Address:        ":8000",
 			ReadTimeout:    30 * time.Second,
 			WriteTimeout:   30 * time.Second,
 			MaxHeaderBytes: 1 << 20,
 			MaxBodyBytes:   10 << 20,
 		},
-		Discovery: DiscoveryConfig{
-			Mode: Etcd,
-			Etcd: &EtcdConfig{
+		Discovery: &ServiceDiscoveryConfig{
+			Mode: discovery.EtcdMode,
+			Etcd: &EtcdRegistryConfig{
 				Endpoints:     []string{"127.0.0.1:2379"},
 				DiscoveryPath: "test/server",
 				DialTimeout:   5 * time.Second,
@@ -29,8 +31,8 @@ func TestNewEngine(t *testing.T) {
 
 	// create etcd watch
 	// support: etcd | consul | nacos | consumer
-	// the consumer watcher must impl Watcher interface
-	watcher, err := NewEtcdWatcher(
+	// the consumer watcher must impl etcdWatcher interface
+	watcher, err := etcd.NewWatcher(
 		cfg.Discovery.Etcd.Endpoints,
 		cfg.Discovery.Etcd.DialTimeout,
 		cfg.Discovery.Etcd.DiscoveryPath,

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/kieran091/pilot/discovery"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -115,7 +116,7 @@ type ServiceEndpoint struct {
 	invokers map[string]*GRPCInvoker
 
 	// instances holds all available service instances
-	instances []*ServiceInstance
+	instances []*discovery.Instance
 
 	// replicas specifies the number of virtual nodes for consistent hashing
 	replicas int
@@ -145,7 +146,7 @@ func newServiceEndpoint(replicas int, service, pb string) (*ServiceEndpoint, err
 	return &ServiceEndpoint{
 		service:   service,
 		invokers:  make(map[string]*GRPCInvoker),
-		instances: make([]*ServiceInstance, 0),
+		instances: make([]*discovery.Instance, 0),
 		replicas:  replicas,
 		hashRing:  NewConsistentHash(replicas),
 		fds:       &fds,
@@ -153,7 +154,7 @@ func newServiceEndpoint(replicas int, service, pb string) (*ServiceEndpoint, err
 }
 
 // addInstance updates the service instances and rebuilds the consistent hash ring.
-func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
+func (se *ServiceEndpoint) addInstance(instance *discovery.Instance) {
 	if instance == nil {
 		return
 	}
@@ -162,7 +163,7 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 	defer se.mu.Unlock()
 
 	if se.instances == nil {
-		se.instances = make([]*ServiceInstance, 0)
+		se.instances = make([]*discovery.Instance, 0)
 	}
 	if se.hashRing == nil {
 		se.hashRing = NewConsistentHash(se.replicas)
@@ -172,9 +173,9 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 	}
 
 	instanceExists := false
-	var existingInstance *ServiceInstance
+	var existingInstance *discovery.Instance
 	for _, inst := range se.instances {
-		if inst.Id == instance.Id {
+		if inst.ID == instance.ID {
 			instanceExists = true
 			existingInstance = inst
 			break
@@ -185,7 +186,7 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 
 	if !instanceExists {
 		se.instances = append(se.instances, instance)
-		hashNode := fmt.Sprintf("%s:%s", se.service, instance.Id)
+		hashNode := fmt.Sprintf("%s:%s", se.service, instance.ID)
 		se.hashRing.add(hashNode)
 
 		invoker, err := NewGRPCInvoker(instance.Addr, se.fds)
@@ -195,7 +196,7 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 		se.invokers[hashNode] = invoker
 	} else if addressChanged {
 		for i, inst := range se.instances {
-			if inst.Id == instance.Id {
+			if inst.ID == instance.ID {
 				se.instances[i] = instance
 				break
 			}
@@ -203,18 +204,18 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 
 		ring := NewConsistentHash(se.replicas)
 		for _, inst := range se.instances {
-			hashNode := fmt.Sprintf("%s:%s", se.service, inst.Id)
+			hashNode := fmt.Sprintf("%s:%s", se.service, inst.ID)
 			ring.add(hashNode)
 		}
 		se.hashRing = ring
 
-		oldHashNode := fmt.Sprintf("%s:%s", se.service, existingInstance.Id)
+		oldHashNode := fmt.Sprintf("%s:%s", se.service, existingInstance.ID)
 		if invoker, exists := se.invokers[oldHashNode]; exists {
 			_ = invoker.Close()
 			delete(se.invokers, oldHashNode)
 		}
 
-		newHashNode := fmt.Sprintf("%s:%s", instance.Id, instance.Addr)
+		newHashNode := fmt.Sprintf("%s:%s", instance.ID, instance.Addr)
 		invoker, err := NewGRPCInvoker(instance.Addr, se.fds)
 		if err != nil {
 			return
@@ -224,7 +225,7 @@ func (se *ServiceEndpoint) addInstance(instance *ServiceInstance) {
 }
 
 // removeInstance removes a service instance and updates the consistent hash ring.
-func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
+func (se *ServiceEndpoint) removeInstance(instance *discovery.Instance) {
 	if instance == nil {
 		return
 	}
@@ -234,7 +235,7 @@ func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
 
 	index := -1
 	for i, inst := range se.instances {
-		if inst.Id == instance.Id {
+		if inst.ID == instance.ID {
 			index = i
 			break
 		}
@@ -242,7 +243,7 @@ func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
 
 	if index != -1 {
 		se.instances = append(se.instances[:index], se.instances[index+1:]...)
-		hashNode := fmt.Sprintf("%s:%s", se.service, instance.Id)
+		hashNode := fmt.Sprintf("%s:%s", se.service, instance.ID)
 
 		se.hashRing.remove(hashNode)
 
@@ -251,12 +252,12 @@ func (se *ServiceEndpoint) removeInstance(instance *ServiceInstance) {
 			delete(se.invokers, hashNode)
 
 			defaultLogger.Info().
-				Str("instance_id", instance.Id).
+				Str("instance_id", instance.ID).
 				Msg("instance removed successfully")
 		}
 	} else {
 		defaultLogger.Warn().
-			Str("instance_id", instance.Id).
+			Str("instance_id", instance.ID).
 			Msg("instance not found for removal")
 	}
 }
