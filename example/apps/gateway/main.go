@@ -13,7 +13,7 @@ import (
 func main() {
 	cfg := pilot.Config{
 		Server: &pilot.ServerConfig{
-			Address:        ":8000",
+			Addr:           ":8000",
 			ReadTimeout:    30 * time.Second,
 			WriteTimeout:   30 * time.Second,
 			MaxHeaderBytes: 1 << 20,

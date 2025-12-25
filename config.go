@@ -7,7 +7,7 @@ import (
 )
 
 type ServerConfig struct {
-	Address        string        `json:"address" yaml:"address"`
+	Addr           string        `json:"addr" yaml:"addr"`
 	ReadTimeout    time.Duration `json:"readTimeout" yaml:"readTimeout"`
 	WriteTimeout   time.Duration `json:"writeTimeout" yaml:"writeTimeout"`
 	MaxHeaderBytes int           `json:"maxHeaderBytes" yaml:"maxHeaderBytes"`
@@ -42,8 +42,8 @@ const (
 )
 
 func (c *Config) setDefaults() {
-	if c.Server.Address == "" {
-		c.Server.Address = defaultHTTPAddr
+	if c.Server.Addr == "" {
+		c.Server.Addr = defaultHTTPAddr
 	}
 	if c.Server.ReadTimeout == 0 {
 		c.Server.ReadTimeout = defaultHTTPReadTimeout

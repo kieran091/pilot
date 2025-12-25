@@ -33,7 +33,7 @@ func WithWatcher(w discovery.Watcher) EngineOption {
 var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 
 type Engine struct {
-	cfg    Config
+	cfg    *Config
 	router *Router
 	server *http.Server
 
@@ -43,7 +43,7 @@ type Engine struct {
 	watcher discovery.Watcher
 }
 
-func NewEngine(cfg Config, opts ...EngineOption) (*Engine, error) {
+func NewEngine(cfg *Config, opts ...EngineOption) (*Engine, error) {
 	cfg.setDefaults()
 
 	engine := &Engine{
@@ -76,7 +76,7 @@ func NewEngine(cfg Config, opts ...EngineOption) (*Engine, error) {
 	var handler http.Handler = mux
 
 	engine.server = &http.Server{
-		Addr:           cfg.Server.Address,
+		Addr:           cfg.Server.Addr,
 		Handler:        handler,
 		ReadTimeout:    cfg.Server.ReadTimeout,
 		WriteTimeout:   cfg.Server.WriteTimeout,
