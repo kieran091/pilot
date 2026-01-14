@@ -4,10 +4,11 @@ package user;
 
 option go_package = "./user";
 
+import "validate/validate.proto";
 import "google/api/annotations.proto";
 
 message GetUserReq {
-  string id = 1;
+  string id = 1 [(validate.rules).string.min_len = 1];
 }
 
 message GetUserResp {
@@ -16,9 +17,9 @@ message GetUserResp {
 }
 
 message CreateUserReq {
-  string email = 1;
-  string name = 2;
-  string password = 3;
+  string email = 1 [(validate.rules).string.min_len = 1];
+  string name = 2 [(validate.rules).string.min_len = 1];
+  string password = 3 [(validate.rules).string.min_len = 1];
 }
 
 message CreateUserResp {

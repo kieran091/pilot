@@ -1,6 +1,7 @@
 package pilot
 
 import (
+	"maps"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -97,9 +98,7 @@ func buildRequestData(req *http.Request, params map[string]string, bodyField str
 					return nil, err
 				}
 
-				for k, v := range bodyMap {
-					requestMap[k] = v
-				}
+				maps.Copy(requestMap, bodyMap)
 			} else if bodyField != "" {
 				var bodyData any
 				if err := sonic.Unmarshal(body, &bodyData); err != nil {

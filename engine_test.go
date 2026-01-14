@@ -44,7 +44,7 @@ func TestNewEngine(t *testing.T) {
 	defer cancel()
 
 	engine, err := NewEngine(
-		cfg,
+		&cfg,
 		WithContext(ctx),
 		WithWatcher(watcher),
 	)

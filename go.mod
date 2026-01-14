@@ -5,6 +5,7 @@ go 1.25.4
 require (
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/bytedance/sonic v1.14.2
+	github.com/envoyproxy/protoc-gen-validate v1.2.1
 	github.com/google/uuid v1.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0

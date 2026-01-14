@@ -40,7 +40,7 @@ func WithProtoPath(protoPath string) RegisterOption {
 type ServiceRegistrar struct {
 	serviceName string
 	addr        string
-	instanceId  string
+	instanceID  string
 
 	registry discovery.Registry
 
@@ -53,7 +53,7 @@ func NewServiceRegistrar(serviceName, listenOn string, registry discovery.Regist
 	return &ServiceRegistrar{
 		serviceName: serviceName,
 		addr:        figureOutListenOn(listenOn),
-		instanceId:  getInstanceId(),
+		instanceID:  getInstanceID(),
 
 		registry: registry,
 
@@ -98,12 +98,12 @@ func (sr *ServiceRegistrar) Register(ctx context.Context, opts ...RegisterOption
 		PB:    base64.StdEncoding.EncodeToString(pb),
 	}
 
-	return sr.registry.Register(ctx, sr.serviceName, sr.instanceId, &serviceMetadata)
+	return sr.registry.Register(ctx, sr.serviceName, sr.instanceID, &serviceMetadata)
 }
 
 // Deregister removes the service registration
 func (sr *ServiceRegistrar) Deregister(ctx context.Context) error {
-	return sr.registry.Deregister(ctx, sr.serviceName, sr.instanceId)
+	return sr.registry.Deregister(ctx, sr.serviceName, sr.instanceID)
 }
 
 // compileProto compiles the added proto files and returns the serialized
@@ -116,12 +116,13 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 	if len(sr.protoPaths) != 0 {
 		// Set up a custom resolver that searches the provided proto paths
 		baseResolver := protocompile.ResolverFunc(func(name string) (protocompile.SearchResult, error) {
-			if filepath.IsAbs(name) {
-				return openProto(name)
+			importPath := filepath.FromSlash(name)
+			if filepath.IsAbs(importPath) {
+				return openProto(importPath)
 			}
 
 			for _, base := range sr.protoPaths {
-				candidate := filepath.Join(base, name)
+				candidate := filepath.Join(base, importPath)
 				searchResult, err := openProto(candidate)
 				if err == nil {
 					return searchResult, nil
@@ -150,8 +151,8 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 	// Recursive function to add file descriptors and their imports
 	var addFile func(fd protoreflect.FileDescriptor)
 	addFile = func(fd protoreflect.FileDescriptor) {
-		name := string(fd.FullName())
-		if _, exists := added[name]; exists {
+		path := fd.Path()
+		if _, exists := added[path]; exists {
 			return
 		}
 
@@ -160,7 +161,7 @@ func (sr *ServiceRegistrar) compileProto() (*descriptorpb.FileDescriptorSet, err
 			addFile(imports.Get(i).FileDescriptor)
 		}
 
-		added[name] = struct{}{}
+		added[path] = struct{}{}
 		fds.File = append(fds.File, protodesc.ToFileDescriptorProto(fd))
 	}
 
@@ -242,7 +243,7 @@ func figureOutListenOn(listenOn string) string {
 
 	ip := os.Getenv("POD_IP")
 	if len(ip) == 0 {
-		ip = internalIp()
+		ip = internalIP()
 	}
 	if len(ip) == 0 {
 		return listenOn
@@ -251,8 +252,8 @@ func figureOutListenOn(listenOn string) string {
 	return strings.Join(append([]string{ip}, fields[1:]...), ":")
 }
 
-// internalIp retrieves the first non-loopback IPv4 address of the machine
-func internalIp() string {
+// internalIP retrieves the first non-loopback IPv4 address of the machine
+func internalIP() string {
 	infs, err := net.Interfaces()
 	if err != nil {
 		return ""
@@ -290,8 +291,8 @@ func isLoopback(f net.Flags) bool {
 	return f&net.FlagLoopback == net.FlagLoopback
 }
 
-// getInstanceId generates a UUIDv7 instance ID
-func getInstanceId() string {
+// getInstanceID generates a UUIDv7 instance ID
+func getInstanceID() string {
 	uuidV7, err := uuid.NewV7()
 	if err != nil {
 		return uuid.New().String()

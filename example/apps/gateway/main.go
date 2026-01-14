@@ -41,7 +41,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	engine, err := pilot.NewEngine(cfg, pilot.WithContext(ctx), pilot.WithWatcher(watcher))
+	engine, err := pilot.NewEngine(&cfg, pilot.WithContext(ctx), pilot.WithWatcher(watcher))
 	if err != nil {
 		log.Fatalln(err)
 	}
