@@ -151,7 +151,7 @@ func (inv *GRPCInvoker) Invoke(ctx context.Context, service, method string, inpu
 
 	err = inv.conn.Invoke(ctx, methodInfo.FullMethod, req, resp)
 	if err != nil {
-		return nil, errors.WithMessage(err, "filed to invoke gRPC method")
+		return nil, err
 	}
 
 	output, err := inv.marshalOpts.Marshal(resp)
