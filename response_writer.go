@@ -26,15 +26,18 @@ func withResponseWriter(w http.ResponseWriter) *responseWriter {
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {
+	if rw.size == noWritten {
+		rw.size = 0
+	}
 	size, err := rw.ResponseWriter.Write(b)
 	rw.size += size
 	return size, err
 }
 
 func (rw *responseWriter) WriteJSON(status int, res result) {
-	rw.ResponseWriter.Header().Set("Content-Type", "application/json")
-	rw.ResponseWriter.WriteHeader(status)
-	err := sonic.ConfigDefault.NewEncoder(rw.ResponseWriter).Encode(res)
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(status)
+	err := sonic.ConfigDefault.NewEncoder(rw).Encode(res)
 	if err != nil {
 		defaultLogger.Error().
 			Int("status", status).

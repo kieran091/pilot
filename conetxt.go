@@ -50,7 +50,13 @@ func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 func (c *Context) Next() {
 	c.index++
 	for c.index < int8(len(c.handlers)) {
+		if c.aborted {
+			return
+		}
 		c.handlers[c.index](c)
+		if c.aborted {
+			return
+		}
 		c.index++
 	}
 }
